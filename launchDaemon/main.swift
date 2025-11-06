@@ -30,17 +30,27 @@ class ServiceDelegate: NSObject, NSXPCListenerDelegate {
     }
 }
 
+// Force unbuffered output for debugging - must be first!
+setbuf(stdout, nil)
+setbuf(stderr, nil)
+
+print("=== LaunchDaemon main.swift starting ===")
+fflush(stdout)
+
 // Create the delegate for the service.
 let delegate = ServiceDelegate()
 
 let launchDaemonIdentifier: String = "io.allsunday.seeker.launchDaemon"
+print("Service identifier: \(launchDaemonIdentifier)")
 
 // Set up the one NSXPCListener for this service. It will handle all incoming connections.
 let listener = NSXPCListener(machServiceName: launchDaemonIdentifier)
 listener.delegate = delegate
 
 // Resuming the serviceListener starts this service. This method does not return.
+print("Resuming listener...")
 listener.resume()
-print("launchedDaemon: listener resumed")
+
+print("Listener resumed and ready to accept connections")
 
 RunLoop.main.run()

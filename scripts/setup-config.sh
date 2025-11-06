@@ -1,20 +1,21 @@
 #!/bin/bash
 
-# Setup script to create default config for seeker in app sandbox
+# Setup script to create default config for seeker
 # This should be run by the user after installing the app
 
 set -e
 
-# Use app sandbox container for config
-CONFIG_DIR="$HOME/Library/Containers/io.allsunday.seeker/Data/Library/Application Support/seeker"
+# Use system Application Support directory for config
+CONFIG_DIR="/Library/Application Support/seeker"
 CONFIG_FILE="$CONFIG_DIR/config.yml"
 
 echo "Setting up seeker configuration..."
 
-# Create config directory if it doesn't exist
+# Create config directory if it doesn't exist (requires sudo)
 if [ ! -d "$CONFIG_DIR" ]; then
-    echo "Creating config directory at $CONFIG_DIR"
-    mkdir -p "$CONFIG_DIR"
+    echo "Creating config directory at $CONFIG_DIR (requires sudo)"
+    sudo mkdir -p "$CONFIG_DIR"
+    sudo chmod 755 "$CONFIG_DIR"
 fi
 
 # Check if config already exists
@@ -34,16 +35,17 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SAMPLE_CONFIG="$PROJECT_DIR/rust-seeker/sample_config.yml"
 
 if [ -f "$SAMPLE_CONFIG" ]; then
-    echo "Copying sample config to $CONFIG_FILE"
-    cp "$SAMPLE_CONFIG" "$CONFIG_FILE"
+    echo "Copying sample config to $CONFIG_FILE (requires sudo)"
+    sudo cp "$SAMPLE_CONFIG" "$CONFIG_FILE"
+    sudo chmod 644 "$CONFIG_FILE"
     echo "✓ Config file created successfully"
     echo ""
     echo "Please edit $CONFIG_FILE to configure your proxy settings"
 else
     echo "Warning: Sample config not found at $SAMPLE_CONFIG"
-    echo "Creating minimal config..."
+    echo "Creating minimal config (requires sudo)..."
 
-    cat > "$CONFIG_FILE" << 'EOF'
+    sudo tee "$CONFIG_FILE" > /dev/null << 'EOF'
 verbose: false
 dns_timeout: 1s
 dns_servers:
@@ -70,9 +72,10 @@ rules:
 servers: []
 EOF
 
+    sudo chmod 644 "$CONFIG_FILE"
     echo "✓ Minimal config file created"
     echo ""
-    echo "Please edit $CONFIG_FILE to add your proxy servers"
+    echo "Please edit $CONFIG_FILE to add your proxy servers (requires sudo)"
 fi
 
 echo ""

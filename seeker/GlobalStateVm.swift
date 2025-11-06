@@ -30,10 +30,13 @@ class GlobalStateVm {
     var autoStartOnLogin: SMAppService.Status = SMAppService.mainApp.status
     var daemonStatus: SMAppService.Status = GlobalStateVm.getDaemonStatus()
     var seekerStatus: String = "Unknown"
+    var lastError: String?
     @ObservationIgnored var connectionToService: NSXPCConnection?
-    @ObservationIgnored var launchDaemonProxy: (any LaunchDaemonProtocol)?
 
     init() {
+        // Establish connection at init to keep it alive
+        connectToDaemon()
+
         Task {
             await updateSeekerStatus()
         }
@@ -42,15 +45,20 @@ class GlobalStateVm {
     func start() {
         Task {
             do {
+                lastError = nil
                 let success = try await callToDaemon { proxy in
                     await proxy.startSeeker()
                 }
                 if success {
                     isStarted = true
                     await updateSeekerStatus()
+                } else {
+                    lastError = "Failed to start seeker"
                 }
             } catch {
                 print("Failed to start seeker: \(error)")
+                lastError = error.localizedDescription
+                seekerStatus = "Error: \(error.localizedDescription)"
             }
         }
     }
@@ -58,15 +66,20 @@ class GlobalStateVm {
     func stop() {
         Task {
             do {
+                lastError = nil
                 let success = try await callToDaemon { proxy in
                     await proxy.stopSeeker()
                 }
                 if success {
                     isStarted = false
                     await updateSeekerStatus()
+                } else {
+                    lastError = "Failed to stop seeker"
                 }
             } catch {
                 print("Failed to stop seeker: \(error)")
+                lastError = error.localizedDescription
+                seekerStatus = "Error: \(error.localizedDescription)"
             }
         }
     }
@@ -96,7 +109,7 @@ class GlobalStateVm {
         }
     }
 
-    private static func getDaemonStatus() -> SMAppService.Status {
+    nonisolated private static func getDaemonStatus() -> SMAppService.Status {
         return SMAppService.daemon(plistName: launchedDaemonServiceName).status
     }
 
@@ -125,40 +138,85 @@ class GlobalStateVm {
     }
 
     private func connectToDaemon() {
-        let connectionToService = NSXPCConnection(
+        print("Establishing XPC connection to daemon...")
+
+        // Clean up any existing connection
+        if let existing = connectionToService {
+            existing.invalidate()
+            connectionToService = nil
+        }
+
+        let connection = NSXPCConnection(
             machServiceName: launchDaemonIdentifier, options: .privileged)
-        connectionToService.remoteObjectInterface = NSXPCInterface(
+        connection.remoteObjectInterface = NSXPCInterface(
             with: LaunchDaemonProtocol.self)
 
-        // Set up error handlers
-        connectionToService.invalidationHandler = {
+        // Set up error handlers with weak self to avoid retain cycles
+        connection.invalidationHandler = { [weak self] in
             print("XPC connection invalidated")
+            Task { @MainActor [weak self] in
+                self?.connectionToService = nil
+            }
         }
 
-        connectionToService.interruptionHandler = {
-            print("XPC connection interrupted")
+        connection.interruptionHandler = {
+            print("XPC connection interrupted - will reconnect on next call")
+            // Don't clear the connection on interruption - XPC may recover automatically
         }
 
-        connectionToService.resume()
-        self.connectionToService = connectionToService
-        print("XPC connection established")
+        // Resume the connection - this is critical!
+        connection.resume()
+
+        // Store the connection as a strong reference
+        self.connectionToService = connection
+        print("XPC connection established and stored")
     }
 
     func callToDaemon<T: Sendable>(method: (any LaunchDaemonProtocol) async throws -> T)
         async throws -> T
     {
+        // Ensure we have a valid connection
         if connectionToService == nil {
+            print("No connection exists, establishing new connection...")
             connectToDaemon()
         }
-        let proxy =
-            connectionToService?.remoteObjectProxy as? LaunchDaemonProtocol
-        
-        launchDaemonProxy = proxy
 
-        if let proxy {
-            return try await method(proxy)
+        guard let connection = connectionToService else {
+            throw AnyError("Failed to establish XPC connection to daemon")
         }
-        throw AnyError("no valid connection")
+
+        // Check daemon status on background thread to avoid UI blocking
+        let daemonStatus = await Task.detached {
+            Self.getDaemonStatus()
+        }.value
+        print("Daemon status: \(daemonStatus)")
+
+        if daemonStatus == .notRegistered || daemonStatus == .notFound {
+            throw AnyError("Daemon is not registered. Please register it first in Edit Config window.")
+        }
+
+        if daemonStatus == .requiresApproval {
+            throw AnyError("Daemon requires approval. Please check System Settings → General → Login Items.")
+        }
+
+        // Use remoteObjectProxyWithErrorHandler for better error handling
+        var errorOccurred: Error?
+        let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+            print("XPC proxy error: \(error)")
+            errorOccurred = error
+        } as? LaunchDaemonProtocol
+
+        // Check if error handler was called during proxy creation
+        if let error = errorOccurred {
+            throw AnyError("XPC connection error: \(error.localizedDescription)")
+        }
+
+        guard let proxy else {
+            throw AnyError("Failed to get daemon proxy - daemon may not be running")
+        }
+
+        // Execute the method with the proxy
+        return try await method(proxy)
     }
 
     func closeConnectionToDaemon() {

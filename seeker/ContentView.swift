@@ -19,6 +19,12 @@ struct ContentView: View {
                 Text("Daemon Status: \(globalState.daemonStatus.description)")
                 Text("Seeker Status: \(globalState.seekerStatus)")
                     .foregroundColor(globalState.isStarted ? .green : .secondary)
+
+                if let error = globalState.lastError {
+                    Text("Error: \(error)")
+                        .foregroundColor(.red)
+                        .font(.caption)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()

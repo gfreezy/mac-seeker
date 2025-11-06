@@ -25,28 +25,21 @@ final class LaunchDaemon: NSObject, LaunchDaemonProtocol {
 
         self.seekerBinaryPath = "\(mainBundlePath)/Contents/MacOS/seeker-proxy"
 
-        // Get app container directory for logs and config
-        // The daemon should use the main app's container
-        let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "6NVVN7F4WA.io.allsunday.seeker")
-        let containerPath = containerURL?.path ?? NSHomeDirectory() + "/Library/Containers/io.allsunday.seeker/Data"
+        // Use system Application Support directory for logs and config
+        // This is accessible to all users and doesn't require sandbox permissions
+        let appSupportDir = "/Library/Application Support/seeker"
+        try? FileManager.default.createDirectory(atPath: appSupportDir, withIntermediateDirectories: true)
 
-        // Logs directory
-        let logsDir = "\(containerPath)/Library/Logs"
-        try? FileManager.default.createDirectory(atPath: logsDir, withIntermediateDirectories: true)
+        // Config and working directory
+        self.configPath = "\(appSupportDir)/config.yml"
+        self.workingDirectory = appSupportDir
 
-        // Config directory in sandbox
-        let configDir = "\(containerPath)/Library/Application Support/seeker"
-        try? FileManager.default.createDirectory(atPath: configDir, withIntermediateDirectories: true)
-
-        // Config and working directory in sandbox
-        self.configPath = "\(configDir)/config.yml"
-        self.workingDirectory = configDir
-
-        // Log file in app sandbox
-        self.logFilePath = "\(logsDir)/seeker.log"
+        // Log file
+        self.logFilePath = "\(appSupportDir)/seeker.log"
 
         super.init()
-        print("LaunchDaemon initialized")
+
+        print("=== LaunchDaemon initialized ===")
         print("Seeker binary path: \(seekerBinaryPath)")
         print("Config path: \(configPath)")
         print("Log file path: \(logFilePath)")
@@ -67,6 +60,19 @@ final class LaunchDaemon: NSObject, LaunchDaemonProtocol {
 
         // Create log file
         FileManager.default.createFile(atPath: logFilePath, contents: nil)
+
+        // Set log file permissions to be readable and writable by everyone (666)
+        do {
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o666],
+                ofItemAtPath: logFilePath
+            )
+            print("LaunchDaemon: Set log file permissions to 666 (rw-rw-rw-)")
+            fflush(stdout)
+        } catch {
+            print("LaunchDaemon: Failed to set log file permissions: \(error)")
+            fflush(stdout)
+        }
 
         // Open log file for writing
         if let logHandle = FileHandle(forWritingAtPath: logFilePath) {
