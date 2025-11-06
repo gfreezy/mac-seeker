@@ -1,0 +1,3 @@
+[submodule "rust-seeker"]
+	path = rust-seeker
+	url = https://github.com/gfreezy/seeker.git
