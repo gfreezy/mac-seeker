@@ -51,6 +51,7 @@ struct seekerApp: App {
 
             }.keyboardShortcut("q")
         }
+
         WindowGroup("Settings", id: WindowId.settings) {
             ContentView()
                 .environment(state)

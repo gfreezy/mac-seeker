@@ -23,6 +23,7 @@ final class LaunchDaemon: NSObject, LaunchDaemonProtocol {
         }
 
         let workingDirectory = (config.configPath as NSString).deletingLastPathComponent
+        print("[Daemon] Working directory: \(workingDirectory)")
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: config.binaryPath)

@@ -70,6 +70,7 @@ public struct AnyError: LocalizedError {
 }
 
 /// The protocol that this service will vend as its API. This protocol will also need to be visible to the process hosting the service.
+@available(macOS 10.15.0, *)
 @objc public protocol LaunchDaemonProtocol: Sendable {
     /// Start the Rust seeker process with specified configuration
     func startSeeker(config: SeekerConfig) async throws
