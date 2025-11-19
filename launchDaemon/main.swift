@@ -6,51 +6,80 @@
 //
 
 import Foundation
+import shared
 
 class ServiceDelegate: NSObject, NSXPCListenerDelegate {
+    private let daemon = LaunchDaemon()
+    private let connectionQueue = DispatchQueue(label: "io.allsunday.seeker.daemon.connections")
+    private var activeConnections = 0
+    private var pendingShutdownWorkItem: DispatchWorkItem?
+    private let shutdownDelay: TimeInterval = 2
 
-    /// This method is where the NSXPCListener configures, accepts, and resumes a new incoming NSXPCConnection.
     func listener(
         _ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection
     ) -> Bool {
-
-        // Configure the connection.
-        // First, set the interface that the exported object implements.
         newConnection.exportedInterface = NSXPCInterface(with: LaunchDaemonProtocol.self)
+        newConnection.exportedObject = daemon
 
-        // Next, set the object that the connection exports. All messages sent on the connection to this service will be sent to the exported object to handle. The connection retains the exported object.
-        let exportedObject = LaunchDaemon()
-        newConnection.exportedObject = exportedObject
+        connectionQueue.sync {
+            activeConnections += 1
+            pendingShutdownWorkItem?.cancel()
+            pendingShutdownWorkItem = nil
+            print("[Daemon] Connection accepted. Active: \(activeConnections)")
+        }
 
-        // Resuming the connection allows the system to deliver more incoming messages.
+        newConnection.invalidationHandler = { [weak self] in
+            self?.connectionClosed()
+        }
+
         newConnection.resume()
-
-        // Returning true from this method tells the system that you have accepted this connection. If you want to reject the connection for some reason, call invalidate() on the connection and return false.
         return true
+    }
+
+    private func connectionClosed() {
+        var shutdownWorkItem: DispatchWorkItem?
+
+        connectionQueue.sync {
+            activeConnections = max(activeConnections - 1, 0)
+            print("[Daemon] Connection closed. Active: \(activeConnections)")
+
+            guard activeConnections == 0 else { return }
+
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.performShutdown()
+            }
+            pendingShutdownWorkItem = workItem
+            shutdownWorkItem = workItem
+        }
+
+        if let workItem = shutdownWorkItem {
+            print("[Daemon] No active connections. Shutting down in \(shutdownDelay)s...")
+            DispatchQueue.global().asyncAfter(deadline: .now() + shutdownDelay, execute: workItem)
+        }
+    }
+
+    private func performShutdown() {
+        connectionQueue.sync {
+            pendingShutdownWorkItem = nil
+        }
+        daemon.stopSeekerSync()
+        print("[Daemon] Shutdown complete. Exiting.")
+        exit(0)
     }
 }
 
-// Force unbuffered output for debugging - must be first!
+// Unbuffered output for debugging
 setbuf(stdout, nil)
 setbuf(stderr, nil)
 
-print("=== LaunchDaemon main.swift starting ===")
-fflush(stdout)
+let launchDaemonIdentifier = "io.allsunday.seeker.launchDaemon"
+print("[Daemon] Starting service: \(launchDaemonIdentifier)")
 
-// Create the delegate for the service.
 let delegate = ServiceDelegate()
-
-let launchDaemonIdentifier: String = "io.allsunday.seeker.launchDaemon"
-print("Service identifier: \(launchDaemonIdentifier)")
-
-// Set up the one NSXPCListener for this service. It will handle all incoming connections.
 let listener = NSXPCListener(machServiceName: launchDaemonIdentifier)
 listener.delegate = delegate
-
-// Resuming the serviceListener starts this service. This method does not return.
-print("Resuming listener...")
 listener.resume()
 
-print("Listener resumed and ready to accept connections")
+print("[Daemon] Ready to accept connections")
 
 RunLoop.main.run()

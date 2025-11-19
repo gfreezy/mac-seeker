@@ -11,14 +11,7 @@ import SwiftUI
 private let logger = Logger(subsystem: "io.allsunday.seeker", category: "")
 
 enum WindowId {
-    static let editConfig = "editConfig"
-}
-
-struct AnyError: LocalizedError {
-    let errorDescription: String?
-    init(_ errorDescription: String) {
-        self.errorDescription = errorDescription
-    }
+    static let settings = "settings"
 }
 
 @main
@@ -27,22 +20,25 @@ struct seekerApp: App {
     @Environment(\.openWindow) var openWindow
 
     var body: some Scene {
-
-        WindowGroup("Edit Config", id: WindowId.editConfig) {
-            ContentView()
-                .environment(state)
-        }
         MenuBarExtra("Seeker", systemImage: "fish.fill") {
             Button(state.isStarted ? "􀆅 Stop" : "Start") {
                 state.toggle()
             }
 
-            Button("Edit Config") {
-                openWindow(id: WindowId.editConfig)
+            Button("Open Settings") {
+                openWindow(id: WindowId.settings)
+            }
+
+            Button("Open Config") {
+                state.openConfig()
             }
 
             Button("Open Log") {
                 state.openLog()
+            }
+
+            Button("Open Folder") {
+                state.openFolder()
             }
 
             autoStartButton
@@ -54,6 +50,10 @@ struct seekerApp: App {
                 NSApplication.shared.terminate(nil)
 
             }.keyboardShortcut("q")
+        }
+        WindowGroup("Settings", id: WindowId.settings) {
+            ContentView()
+                .environment(state)
         }
 
     }

@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		57614D1C2D2D2A8C008862EF /* launchDaemon in Copy Launch Daemon Binary */ = {isa = PBXBuildFile; fileRef = 57614D0C2D2D27C4008862EF /* launchDaemon */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		57E9D1F62EBC972C006F6498 /* shared in Frameworks */ = {isa = PBXBuildFile; productRef = 57E9D1F52EBC972C006F6498 /* shared */; };
+		57E9D1F82EBC9735006F6498 /* shared in Frameworks */ = {isa = PBXBuildFile; productRef = 57E9D1F72EBC9735006F6498 /* shared */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -72,6 +74,7 @@
 		57614CCA2D2CEAA9008862EF /* seekerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = seekerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		57614CD42D2CEAA9008862EF /* seekerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = seekerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		57614D0C2D2D27C4008862EF /* launchDaemon */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = launchDaemon; sourceTree = BUILT_PRODUCTS_DIR; };
+		57E9D1F32EBC96D1006F6498 /* shared */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = shared; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -127,6 +130,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				57E9D1F82EBC9735006F6498 /* shared in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -148,6 +152,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				57E9D1F62EBC972C006F6498 /* shared in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -157,10 +162,12 @@
 		57614CB02D2CEAA7008862EF = {
 			isa = PBXGroup;
 			children = (
+				57E9D1F32EBC96D1006F6498 /* shared */,
 				57614CBB2D2CEAA7008862EF /* seeker */,
 				57614D0D2D2D27C4008862EF /* launchDaemon */,
 				57614CCD2D2CEAA9008862EF /* seekerTests */,
 				57614CD72D2CEAA9008862EF /* seekerUITests */,
+				57E9D1F42EBC972C006F6498 /* Frameworks */,
 				57614CBA2D2CEAA7008862EF /* Products */,
 			);
 			sourceTree = "<group>";
@@ -174,6 +181,13 @@
 				57614D0C2D2D27C4008862EF /* launchDaemon */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		57E9D1F42EBC972C006F6498 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -749,6 +763,17 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		57E9D1F52EBC972C006F6498 /* shared */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = shared;
+		};
+		57E9D1F72EBC9735006F6498 /* shared */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = shared;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 57614CB12D2CEAA7008862EF /* Project object */;
 }

@@ -8,8 +8,6 @@
 	<string>Contents/MacOS/launchDaemon</string>
 	<key>RunAtLoad</key>
 	<true/>
-	<key>KeepAlive</key>
-	<true/>
 	<key>MachServices</key>
 	<dict>
 		<key>io.allsunday.seeker.launchDaemon</key>
