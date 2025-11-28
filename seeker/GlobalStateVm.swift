@@ -1,7 +1,7 @@
+import AppKit
 import Observation
 import ServiceManagement
 import SwiftUI
-import AppKit
 import shared
 
 let launchDaemonIdentifier = "io.allsunday.seeker.launchDaemon"
@@ -120,35 +120,32 @@ class GlobalStateVm {
             throw error
         }
 
-
         // Start polling for seeker status
         startPolling()
     }
 
-    func stop() {
-        Task { @MainActor in
-            do {
-                print("[MainApp] stop() called")
-                lastError = nil
-                let success = try await callToDaemon { proxy in
-                    print("[MainApp] inside callToDaemon closure, about to call proxy.stopSeeker")
-                    let r = await proxy.stopSeeker()
-                    print("[MainApp] proxy.stopSeeker returned: \(r)")
-                    return r
-                }
-                print("[MainApp] daemon call completed, success: \(success)")
-                if success {
-                    await updateSeekerStatus()
-                    print("[MainApp] stop() completed successfully")
-                } else {
-                    lastError = "Failed to stop seeker"
-                    print("[MainApp] stop() failed")
-                }
-            } catch {
-                print("[MainApp] stop() exception: \(error)")
-                lastError = error.localizedDescription
-                seekerStatus = .error(error.localizedDescription)
+    func stop() async {
+        do {
+            print("[MainApp] stop() called")
+            lastError = nil
+            let success = try await callToDaemon { proxy in
+                print("[MainApp] inside callToDaemon closure, about to call proxy.stopSeeker")
+                let r = await proxy.stopSeeker()
+                print("[MainApp] proxy.stopSeeker returned: \(r)")
+                return r
             }
+            print("[MainApp] daemon call completed, success: \(success)")
+            if success {
+                print("[MainApp] stop() completed successfully")
+            } else {
+                lastError = "Failed to stop seeker"
+                print("[MainApp] stop() failed")
+            }
+            await updateSeekerStatus()
+        } catch {
+            print("[MainApp] stop() exception: \(error)")
+            lastError = error.localizedDescription
+            seekerStatus = .error(error.localizedDescription)
         }
 
         // Stop polling for seeker status
@@ -158,7 +155,7 @@ class GlobalStateVm {
     func toggle() {
         Task {
             if isStarted {
-                stop()
+                await stop()
             } else {
                 try await start()
             }
@@ -232,7 +229,7 @@ class GlobalStateVm {
         // Stop seeker if running
         if isStarted {
             print("[MainApp] Stopping seeker before unregistering daemon...")
-            stop()
+            await stop()
             // Wait for stop to complete
             try? await Task.sleep(nanoseconds: 1_000_000_000)  // 1 second
         }
@@ -365,9 +362,9 @@ class GlobalStateVm {
 
         if !FileManager.default.fileExists(atPath: configPath) {
             let template = """
-            # Seeker Configuration
-            # Add your seeker settings below.
-            """
+                # Seeker Configuration
+                # Add your seeker settings below.
+                """
 
             do {
                 try template.write(to: configURL, atomically: true, encoding: .utf8)

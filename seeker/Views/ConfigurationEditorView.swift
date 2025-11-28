@@ -68,23 +68,18 @@ struct ConfigurationEditorView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                if configService.isDirty {
-                    Button("Unsaved Changes") {
-
-                    }
-                    .font(.caption)
-                    .foregroundColor(.orange)
-                }
-
                 Button(action: reloadConfig) {
-                    Label("Reload", systemImage: "arrow.clockwise")
+                    Label(configService.isDirty ? "Revert to Original" : "Reload", systemImage: "arrow.clockwise")
                 }
+                .labelStyle(.titleAndIcon)
                 .help("Reload configuration from file")
 
                 Button(action: saveConfig) {
                     Label("Save", systemImage: "square.and.arrow.down.fill")
                 }
+                .buttonStyle(.borderedProminent)
                 .disabled(!configService.isDirty)
+                .labelStyle(.titleAndIcon)
                 .help("Save configuration to file")
             }
         }
@@ -103,7 +98,7 @@ struct ConfigurationEditorView: View {
             if let globalState = globalState, globalState.isStarted {
                 Button("Restart Now") {
                     Task { @MainActor in
-                        globalState.stop()
+                        await globalState.stop()
                         try? await Task.sleep(for: .milliseconds(500))
                         try? await globalState.start()
                     }
