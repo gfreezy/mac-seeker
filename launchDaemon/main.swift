@@ -18,7 +18,8 @@ class ServiceDelegate: NSObject, NSXPCListenerDelegate {
     func listener(
         _ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection
     ) -> Bool {
-        newConnection.exportedInterface = NSXPCInterface(with: LaunchDaemonProtocol.self)
+        let interface = NSXPCInterface(with: LaunchDaemonProtocol.self)
+        newConnection.exportedInterface = interface
         newConnection.exportedObject = daemon
 
         connectionQueue.sync {

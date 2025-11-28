@@ -528,8 +528,7 @@ struct ParsedRule: Equatable, Identifiable, Hashable {
     }
 
     init?(from string: String) {
-        let trimmed = string.trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
-        let parts = trimmed.split(separator: ",", maxSplits: 2).map(String.init)
+        let parts = string.split(separator: ",", maxSplits: 2).map(String.init)
 
         guard parts.count >= 2 else { return nil }
 
@@ -547,8 +546,8 @@ struct ParsedRule: Equatable, Identifiable, Hashable {
 
     func toString() -> String {
         if type == .match {
-            return "'\(type.rawValue),\(action.toString())'"
+            return "\(type.rawValue),\(action.toString())"
         }
-        return "'\(type.rawValue),\(value),\(action.toString())'"
+        return "\(type.rawValue),\(value),\(action.toString())"
     }
 }

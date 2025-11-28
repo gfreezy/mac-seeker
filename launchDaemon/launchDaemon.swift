@@ -17,7 +17,8 @@ final class LaunchDaemon: NSObject, LaunchDaemonProtocol {
         self.seekerProcessErrorMessage = nil
         print("[Daemon] Starting seeker with config: \(config.configPath)")
 
-        if await isSeekerRunning() {
+        let status = await getSeekerStatus()
+        if status.isRunning {
             print("[Daemon] Seeker already running")
             return
         }
@@ -114,31 +115,27 @@ final class LaunchDaemon: NSObject, LaunchDaemonProtocol {
         }
     }
 
-    @objc func isSeekerRunning() async -> Bool {
+    @objc func getSeekerStatus() async -> SeekerStatusInfo {
         return await withCheckedContinuation { continuation in
             syncQueue.async { [weak self] in
-                guard let process = self?.seekerProcess else {
-                    continuation.resume(returning: false)
+                guard let self = self else {
+                    continuation.resume(returning: .unknown)
                     return
                 }
-                continuation.resume(returning: process.isRunning)
-            }
-        }
-    }
 
-    @objc func getSeekerStatus() async -> String {
-        return await withCheckedContinuation { continuation in
-            syncQueue.async { [weak self] in
-                guard let self = self, let process = self.seekerProcess else {
-                    continuation.resume(returning: "Stopped")
+                guard let process = self.seekerProcess else {
+                    if let errorMsg = self.seekerProcessErrorMessage {
+                        continuation.resume(returning: .error(errorMsg))
+                    } else {
+                        continuation.resume(returning: .stopped)
+                    }
                     return
                 }
 
                 if process.isRunning {
-                    let status = "Running (PID: \(process.processIdentifier))"
-                    continuation.resume(returning: status)
+                    continuation.resume(returning: .running(pid: process.processIdentifier))
                 } else {
-                    continuation.resume(returning: "Stopped")
+                    continuation.resume(returning: .stopped)
                 }
             }
         }

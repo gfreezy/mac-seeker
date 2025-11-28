@@ -27,12 +27,13 @@ extension SMAppService.Status: @retroactive CustomStringConvertible {
 @MainActor
 @Observable
 class GlobalStateVm {
-    var isStarted: Bool = false
+    var isStarted: Bool { seekerStatus.isRunning }
     var autoStartOnLogin: SMAppService.Status = SMAppService.mainApp.status
     var daemonStatus: SMAppService.Status = GlobalStateVm.getDaemonStatus()
-    var seekerStatus: String = "Unknown"
+    var seekerStatus: SeekerStatusInfo = .unknown
     var lastError: String?
     @ObservationIgnored var connectionToService: NSXPCConnection?
+    @ObservationIgnored private var pollingTask: Task<Void, Never>?
 
     // Configuration service for editing config
     var configService: ConfigurationService
@@ -72,10 +73,21 @@ class GlobalStateVm {
 
         // Establish connection at init to keep it alive
         connectToDaemon()
+    }
 
-        Task {
-            await updateSeekerStatus()
+    private func startPolling() {
+        pollingTask?.cancel()
+        pollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.updateSeekerStatus()
+                try? await Task.sleep(for: .seconds(5))
+            }
         }
+    }
+
+    private func stopPolling() {
+        pollingTask?.cancel()
+        pollingTask = nil
     }
 
     func start() async throws {
@@ -100,14 +112,17 @@ class GlobalStateVm {
             try await callToDaemon { proxy in
                 try await proxy.startSeeker(config: config)
             }
-            isStarted = true
             await updateSeekerStatus()
         } catch {
             print("[MainApp] start() exception: \(error)")
             lastError = error.localizedDescription
-            seekerStatus = "Error: \(error.localizedDescription)"
+            seekerStatus = .error(error.localizedDescription)
             throw error
         }
+
+
+        // Start polling for seeker status
+        startPolling()
     }
 
     func stop() {
@@ -123,7 +138,6 @@ class GlobalStateVm {
                 }
                 print("[MainApp] daemon call completed, success: \(success)")
                 if success {
-                    isStarted = false
                     await updateSeekerStatus()
                     print("[MainApp] stop() completed successfully")
                 } else {
@@ -133,9 +147,12 @@ class GlobalStateVm {
             } catch {
                 print("[MainApp] stop() exception: \(error)")
                 lastError = error.localizedDescription
-                seekerStatus = "Error: \(error.localizedDescription)"
+                seekerStatus = .error(error.localizedDescription)
             }
         }
+
+        // Stop polling for seeker status
+        stopPolling()
     }
 
     func toggle() {
@@ -150,18 +167,13 @@ class GlobalStateVm {
 
     func updateSeekerStatus() async {
         do {
-            let running = try await callToDaemon { proxy in
-                await proxy.isSeekerRunning()
-            }
-            isStarted = running
-
             let status = try await callToDaemon { proxy in
                 await proxy.getSeekerStatus()
             }
             seekerStatus = status
         } catch {
             print("Failed to get seeker status: \(error)")
-            seekerStatus = "Error: \(error.localizedDescription)"
+            seekerStatus = .error(error.localizedDescription)
         }
     }
 
@@ -248,8 +260,8 @@ class GlobalStateVm {
 
         let connection = NSXPCConnection(
             machServiceName: launchDaemonIdentifier, options: .privileged)
-        connection.remoteObjectInterface = NSXPCInterface(
-            with: LaunchDaemonProtocol.self)
+        let interface = NSXPCInterface(with: LaunchDaemonProtocol.self)
+        connection.remoteObjectInterface = interface
 
         // Set up error handlers with weak self to avoid retain cycles
         connection.invalidationHandler = { [weak self] in

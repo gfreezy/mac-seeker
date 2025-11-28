@@ -20,7 +20,7 @@ struct seekerApp: App {
     @Environment(\.openWindow) var openWindow
 
     var body: some Scene {
-        MenuBarExtra("Seeker", systemImage: "fish.fill") {
+        MenuBarExtra("Seeker", systemImage: state.isStarted ? "fish.fill" : "fish") {
             Button(state.isStarted ? "􀆅 Stop" : "Start") {
                 state.toggle()
             }

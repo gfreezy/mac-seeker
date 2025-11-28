@@ -17,7 +17,7 @@ struct ContentView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Daemon Status: \(globalState.daemonStatus.description)")
-                Text("Seeker Status: \(globalState.seekerStatus)")
+                Text("Seeker Status: \(globalState.seekerStatus.description)")
                     .foregroundColor(globalState.isStarted ? .green : .secondary)
 
                 if let error = globalState.lastError {
