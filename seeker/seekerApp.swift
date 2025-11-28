@@ -53,7 +53,7 @@ struct seekerApp: App {
         }
 
         WindowGroup("Settings", id: WindowId.settings) {
-            ContentView()
+            ConfigurationEditorView(configService: state.configService, globalState: state)
                 .environment(state)
         }
 

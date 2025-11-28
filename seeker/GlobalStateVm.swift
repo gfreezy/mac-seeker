@@ -34,6 +34,9 @@ class GlobalStateVm {
     var lastError: String?
     @ObservationIgnored var connectionToService: NSXPCConnection?
 
+    // Configuration service for editing config
+    var configService: ConfigurationService
+
     // Paths for binary, config and log files
     let binaryPath: String
     let configPath: String
@@ -62,6 +65,10 @@ class GlobalStateVm {
         }
         self.configPath = appSupportDir.appendingPathComponent("config.yml").path
         self.logPath = appSupportDir.appendingPathComponent("seeker.log").path
+
+        print("[MainApp] configPath: \(self.configPath)")
+        // Initialize configuration service
+        self.configService = ConfigurationService(configPath: self.configPath)
 
         // Establish connection at init to keep it alive
         connectToDaemon()
