@@ -1,0 +1,158 @@
+name: Build and Sign App
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Create Self-Signed Certificate
+        run: |
+          # Create certificate directory
+          mkdir -p /tmp/certs
+
+          # Generate private key
+          openssl genrsa -out /tmp/certs/signing.key 2048
+
+          # Create certificate config
+          cat > /tmp/certs/cert.conf << EOF
+          [req]
+          distinguished_name = req_distinguished_name
+          x509_extensions = v3_req
+          prompt = no
+
+          [req_distinguished_name]
+          CN = Seeker CI
+          O = GitHub Actions
+          OU = Code Signing
+
+          [v3_req]
+          keyUsage = critical, digitalSignature
+          extendedKeyUsage = critical, codeSigning
+          basicConstraints = critical, CA:FALSE
+          EOF
+
+          # Generate self-signed certificate (valid for 1 year)
+          openssl req -new -x509 -sha256 \
+            -key /tmp/certs/signing.key \
+            -out /tmp/certs/signing.crt \
+            -days 365 \
+            -config /tmp/certs/cert.conf
+
+          # Create P12 with password
+          openssl pkcs12 -export \
+            -out /tmp/certs/signing.p12 \
+            -inkey /tmp/certs/signing.key \
+            -in /tmp/certs/signing.crt \
+            -passout pass:temp123
+
+          # Create temporary keychain
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+
+          # Import certificate to keychain
+          security import /tmp/certs/signing.p12 -k build.keychain -P temp123 -T /usr/bin/codesign
+
+          # Allow codesign to access keychain without prompt
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
+
+          # Verify certificate
+          security find-identity -v -p codesigning build.keychain
+
+      - name: Build App
+        run: |
+          xcodebuild archive \
+            -project seeker.xcodeproj \
+            -scheme seeker \
+            -configuration Release \
+            -archivePath build/seeker.xcarchive \
+            -destination "generic/platform=macOS" \
+            CODE_SIGN_IDENTITY="Seeker CI" \
+            CODE_SIGNING_REQUIRED=YES \
+            CODE_SIGNING_ALLOWED=YES \
+            OTHER_CODE_SIGN_FLAGS="--keychain build.keychain"
+
+      - name: Export App
+        run: |
+          # Create export options
+          cat > build/ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>mac-application</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>signingCertificate</key>
+              <string>Seeker CI</string>
+          </dict>
+          </plist>
+          EOF
+
+          # Try to export, fallback to copying from archive
+          xcodebuild -exportArchive \
+            -archivePath build/seeker.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist build/ExportOptions.plist \
+            || {
+              echo "Export failed, copying from archive..."
+              mkdir -p build/export
+              cp -R build/seeker.xcarchive/Products/Applications/seeker.app build/export/
+            }
+
+          # Re-sign the app (ensure proper signing)
+          codesign --force --deep --sign "Seeker CI" --keychain build.keychain build/export/seeker.app
+
+          # Verify signature
+          codesign --verify --verbose build/export/seeker.app
+
+      - name: Create DMG
+        run: |
+          # Create DMG for distribution
+          hdiutil create -volname "Seeker" \
+            -srcfolder build/export/seeker.app \
+            -ov -format UDZO \
+            build/Seeker.dmg
+
+      - name: Upload App Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Seeker-app
+          path: build/export/seeker.app
+          retention-days: 30
+
+      - name: Upload DMG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Seeker-dmg
+          path: build/Seeker.dmg
+          retention-days: 30
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            build/Seeker.dmg
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
