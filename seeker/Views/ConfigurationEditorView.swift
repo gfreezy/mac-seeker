@@ -69,7 +69,9 @@ struct ConfigurationEditorView: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button(action: reloadConfig) {
-                    Label(configService.isDirty ? "Revert to Original" : "Reload", systemImage: "arrow.clockwise")
+                    Label(
+                        configService.isDirty ? "Revert to Original" : "Reload",
+                        systemImage: "arrow.clockwise")
                 }
                 .labelStyle(.titleAndIcon)
                 .help("Reload configuration from file")
@@ -109,6 +111,9 @@ struct ConfigurationEditorView: View {
         }
         .onAppear {
             loadConfigIfNeeded()
+            // Crucial for activation!
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            NSApp.windows.first?.makeKeyAndOrderFront(nil)  // Makes window key and brings to front
         }
         .frame(minWidth: 650, minHeight: 500)
     }

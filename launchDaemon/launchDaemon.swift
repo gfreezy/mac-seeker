@@ -11,10 +11,12 @@ import shared
 final class LaunchDaemon: NSObject, LaunchDaemonProtocol {
     private nonisolated(unsafe) var seekerProcess: Process?
     private nonisolated(unsafe) var seekerProcessErrorMessage: String?
+    private nonisolated(unsafe) var seekerProcessOutput: String = ""
     private let syncQueue = DispatchQueue(label: "io.allsunday.seeker.daemon.sync")
 
     @objc func startSeeker(config: SeekerConfig) async throws {
         self.seekerProcessErrorMessage = nil
+        self.seekerProcessOutput = ""
         print("[Daemon] Starting seeker with config: \(config.configPath)")
 
         let status = await getSeekerStatus()
@@ -30,14 +32,72 @@ final class LaunchDaemon: NSObject, LaunchDaemonProtocol {
         process.executableURL = URL(fileURLWithPath: config.binaryPath)
         process.arguments = ["-c", config.configPath, "-l", config.logPath]
         process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory)
-        process.standardOutput = FileHandle.standardOutput
-        process.standardError = FileHandle.standardError
+
+        // Create pipes to capture stdout and stderr
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        // Read stdout asynchronously
+        stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            guard let self = self else { return }
+            let data = handle.availableData
+            if !data.isEmpty, let str = String(data: data, encoding: .utf8) {
+                print("[Seeker stdout] \(str)", terminator: "")
+                self.syncQueue.async { [weak self] in
+                    self?.seekerProcessOutput += str
+                }
+            }
+        }
+
+        // Read stderr asynchronously
+        stderrPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            guard let self = self else { return }
+            let data = handle.availableData
+            if !data.isEmpty, let str = String(data: data, encoding: .utf8) {
+                print("[Seeker stderr] \(str)", terminator: "")
+                self.syncQueue.async { [weak self] in
+                    self?.seekerProcessOutput += str
+                }
+            }
+        }
 
         process.terminationHandler = { [weak self] process in
             guard let self = self else { return }
-            let msg = "Seeker terminated with status: \(process.terminationStatus)"
-            print("[Daemon] \(msg)")
+
+            // Clean up readability handlers
+            stdoutPipe.fileHandleForReading.readabilityHandler = nil
+            stderrPipe.fileHandleForReading.readabilityHandler = nil
+
+            // Read any remaining data
+            let remainingStdout = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+            let remainingStderr = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+
             self.syncQueue.async {
+                if !remainingStdout.isEmpty, let str = String(data: remainingStdout, encoding: .utf8) {
+                    self.seekerProcessOutput += str
+                }
+                if !remainingStderr.isEmpty, let str = String(data: remainingStderr, encoding: .utf8) {
+                    self.seekerProcessOutput += str
+                }
+
+                let exitStatus = process.terminationStatus
+                let msg: String
+                if exitStatus == 0 {
+                    msg = "Seeker terminated normally"
+                } else {
+                    // Include captured output in error message for non-zero exit
+                    let output = self.seekerProcessOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if output.isEmpty {
+                        msg = "Seeker terminated with status: \(exitStatus)"
+                    } else {
+                        // Keep last 1000 characters of output to avoid too long message
+                        let truncatedOutput = output.count > 1000 ? String(output.suffix(1000)) : output
+                        msg = "Seeker terminated with status: \(exitStatus)\n\(truncatedOutput)"
+                    }
+                }
+                print("[Daemon] \(msg)")
                 self.seekerProcessErrorMessage = msg
                 self.seekerProcess = nil
             }

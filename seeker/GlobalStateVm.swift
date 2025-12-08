@@ -30,10 +30,19 @@ class GlobalStateVm {
     var isStarted: Bool { seekerStatus.isRunning }
     var autoStartOnLogin: SMAppService.Status = SMAppService.mainApp.status
     var daemonStatus: SMAppService.Status = GlobalStateVm.getDaemonStatus()
-    var seekerStatus: SeekerStatusInfo = .unknown
+    var seekerStatus: SeekerStatusInfo = .unknown {
+        didSet {
+            // Show alert when status changes to error (only once per start)
+            if seekerStatus.status == .error, let errorMsg = seekerStatus.errorMessage, !hasShownErrorAlert {
+                hasShownErrorAlert = true
+                showErrorAlert(message: errorMsg)
+            }
+        }
+    }
     var lastError: String?
     @ObservationIgnored var connectionToService: NSXPCConnection?
     @ObservationIgnored private var pollingTask: Task<Void, Never>?
+    @ObservationIgnored private var hasShownErrorAlert: Bool = false
 
     // Configuration service for editing config
     var configService: ConfigurationService
@@ -94,6 +103,7 @@ class GlobalStateVm {
         do {
             print("[MainApp] start() called")
             lastError = nil
+            hasShownErrorAlert = false
 
             // Check daemon status and auto-register if needed
             let status = Self.getDaemonStatus()
@@ -338,21 +348,25 @@ class GlobalStateVm {
 
     func openLog() {
         print("[MainApp] openLog() called")
-        // Open the log file in Console.app or default text editor
-        let logURL = URL(fileURLWithPath: logPath)
 
-        // Check if log file exists
-        if FileManager.default.fileExists(atPath: logPath) {
-            NSWorkspace.shared.open(logURL)
-        } else {
-            print("[MainApp] Log file does not exist yet: \(logPath)")
-            // Create an alert to inform the user
-            let alert = NSAlert()
-            alert.messageText = "Log file not found"
-            alert.informativeText =
-                "The log file will be created when you start Seeker for the first time.\nPath: \(logPath)"
-            alert.alertStyle = .informational
-            alert.runModal()
+        // Create log file if it doesn't exist
+        if !FileManager.default.fileExists(atPath: logPath) {
+            FileManager.default.createFile(atPath: logPath, contents: nil)
+        }
+
+        // Create a temporary shell script that runs tail -f
+        let scriptContent = "#!/bin/bash\ntail -f '\(logPath)'\n"
+        let scriptPath = NSTemporaryDirectory() + "seeker-tail-log.command"
+
+        do {
+            try scriptContent.write(toFile: scriptPath, atomically: true, encoding: .utf8)
+            // Make it executable
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath)
+
+            // Open the .command file which will launch Terminal and run the script
+            NSWorkspace.shared.open(URL(fileURLWithPath: scriptPath))
+        } catch {
+            print("[MainApp] Failed to create/open log script: \(error)")
         }
     }
 
@@ -406,5 +420,14 @@ class GlobalStateVm {
         }
 
         NSWorkspace.shared.open(folderURL)
+    }
+
+    private func showErrorAlert(message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Seeker Error"
+        alert.informativeText = message
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
