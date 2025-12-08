@@ -32,8 +32,8 @@ class GlobalStateVm {
     var daemonStatus: SMAppService.Status = GlobalStateVm.getDaemonStatus()
     var seekerStatus: SeekerStatusInfo = .unknown {
         didSet {
-            // Show alert when status changes to error (only once per start)
-            if seekerStatus.status == .error, let errorMsg = seekerStatus.errorMessage, !hasShownErrorAlert {
+            // Show alert when status changes to error (only once per start, not during stop)
+            if seekerStatus.status == .error, let errorMsg = seekerStatus.errorMessage, !hasShownErrorAlert, !isStopping {
                 hasShownErrorAlert = true
                 showErrorAlert(message: errorMsg)
             }
@@ -43,6 +43,7 @@ class GlobalStateVm {
     @ObservationIgnored var connectionToService: NSXPCConnection?
     @ObservationIgnored private var pollingTask: Task<Void, Never>?
     @ObservationIgnored private var hasShownErrorAlert: Bool = false
+    @ObservationIgnored private var isStopping: Bool = false
 
     // Configuration service for editing config
     var configService: ConfigurationService
@@ -135,6 +136,9 @@ class GlobalStateVm {
     }
 
     func stop() async {
+        isStopping = true
+        defer { isStopping = false }
+
         do {
             print("[MainApp] stop() called")
             lastError = nil
