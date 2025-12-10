@@ -41,6 +41,90 @@ echo "   Scheme: $SCHEME"
 if [ -n "${MARKETING_VERSION:-}" ]; then
     echo "   Version: $MARKETING_VERSION"
     export MARKETING_VERSION
+
+    # Update MARKETING_VERSION in project file
+    echo ""
+    echo "📝 Updating MARKETING_VERSION to ${MARKETING_VERSION}..."
+    PROJECT_FILE="$PROJECT_ROOT/seeker.xcodeproj/project.pbxproj"
+
+    if [ ! -f "$PROJECT_FILE" ]; then
+        echo "❌ Error: Project file not found at ${PROJECT_FILE}"
+        exit 1
+    fi
+
+    # Update MARKETING_VERSION for main app target (Debug and Release)
+    # Strategy: Two-pass processing - first pass identifies config blocks with main app bundle ID,
+    # second pass updates MARKETING_VERSION in those blocks
+    awk -v version="$MARKETING_VERSION" '
+    BEGIN {
+        # First pass: identify line ranges for main app config blocks
+        in_build_settings = 0
+        block_start_line = 0
+        block_end_line = 0
+        has_main_app_bundle_id = 0
+        line_num = 0
+        block_count = 0
+    }
+
+    {
+        line_num++
+        line = $0
+
+        # Track buildSettings block boundaries
+        if (line ~ /buildSettings = \{/) {
+            in_build_settings = 1
+            block_start_line = line_num
+            has_main_app_bundle_id = 0
+        }
+
+        # Check for main app bundle identifier
+        if (in_build_settings && line ~ /PRODUCT_BUNDLE_IDENTIFIER = io\.allsunday\.seeker;/) {
+            has_main_app_bundle_id = 1
+        }
+
+        # Track end of buildSettings block
+        if (line ~ /^[[:space:]]*\};/ && in_build_settings) {
+            block_end_line = line_num
+            if (has_main_app_bundle_id) {
+                block_ranges[block_count++] = block_start_line "," block_end_line
+            }
+            in_build_settings = 0
+            has_main_app_bundle_id = 0
+        }
+
+        # Store all lines for second pass
+        lines[line_num] = line
+    }
+
+    END {
+        # Handle last block if needed (in case file ends without closing brace)
+        if (in_build_settings && has_main_app_bundle_id) {
+            block_ranges[block_count++] = block_start_line "," line_num
+        }
+
+        # Second pass: update MARKETING_VERSION in identified blocks
+        for (i = 1; i <= line_num; i++) {
+            # Check if this line is in any main app config block
+            in_target_block = 0
+            for (j = 0; j < block_count; j++) {
+                split(block_ranges[j], range, ",")
+                if (i >= range[1] && i <= range[2]) {
+                    in_target_block = 1
+                    break
+                }
+            }
+
+            # Update MARKETING_VERSION if in target block
+            if (in_target_block && lines[i] ~ /^[[:space:]]*MARKETING_VERSION = .*;/) {
+                sub(/MARKETING_VERSION = .*;/, "MARKETING_VERSION = " version ";", lines[i])
+            }
+
+            print lines[i]
+        }
+    }
+    ' "$PROJECT_FILE" > "${PROJECT_FILE}.tmp" && mv "${PROJECT_FILE}.tmp" "$PROJECT_FILE"
+
+    echo "✅ MARKETING_VERSION updated to ${MARKETING_VERSION}"
 fi
 echo ""
 
