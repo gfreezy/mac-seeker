@@ -22,53 +22,15 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Create Self-Signed Certificate
+      - name: Import Signing Certificate
         run: |
-          # Create certificate directory
-          mkdir -p /tmp/certs
-
-          # Generate private key
-          openssl genrsa -out /tmp/certs/signing.key 2048
-
-          # Create certificate config
-          cat > /tmp/certs/cert.conf << EOF
-          [req]
-          distinguished_name = req_distinguished_name
-          x509_extensions = v3_req
-          prompt = no
-
-          [req_distinguished_name]
-          CN = Seeker CI
-          O = GitHub Actions
-          OU = Code Signing
-
-          [v3_req]
-          keyUsage = critical, digitalSignature
-          extendedKeyUsage = critical, codeSigning
-          basicConstraints = critical, CA:FALSE
-          EOF
-
-          # Generate self-signed certificate (valid for 1 year)
-          openssl req -new -x509 -sha256 \
-            -key /tmp/certs/signing.key \
-            -out /tmp/certs/signing.crt \
-            -days 365 \
-            -config /tmp/certs/cert.conf
-
-          # Create P12 with password
-          openssl pkcs12 -export \
-            -out /tmp/certs/signing.p12 \
-            -inkey /tmp/certs/signing.key \
-            -in /tmp/certs/signing.crt \
-            -passout pass:temp123
-
           # Create temporary keychain
           security create-keychain -p "" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
 
-          # Import certificate to keychain
-          security import /tmp/certs/signing.p12 -k build.keychain -P temp123 -T /usr/bin/codesign
+          # Import pre-generated certificate from repo
+          security import .github/certs/signing.p12 -k build.keychain -P ci -T /usr/bin/codesign
 
           # Allow codesign to access keychain without prompt
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
@@ -86,6 +48,7 @@ jobs:
             -destination "generic/platform=macOS" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Seeker CI" \
+            DEVELOPMENT_TEAM="" \
             CODE_SIGNING_REQUIRED=YES \
             CODE_SIGNING_ALLOWED=YES \
             OTHER_CODE_SIGN_FLAGS="--keychain build.keychain"
