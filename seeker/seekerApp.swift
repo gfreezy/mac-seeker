@@ -43,6 +43,8 @@ struct seekerApp: App {
 
             autoStartButton
 
+            daemonButton
+
             Divider()
 
             Button("Quit") {
@@ -86,6 +88,40 @@ struct seekerApp: App {
                     }
                 } catch {
                     logger.error("register auto start error: \(error)")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    var daemonButton: some View {
+        let text =
+            switch state.daemonStatus {
+            case .enabled:
+                "􀆅 Daemon Registered"
+            case .notFound:
+                "Daemon Not Registered"
+            case .notRegistered:
+                "Daemon Not Registered"
+            case .requiresApproval:
+                "Daemon Needs Approval"
+            @unknown default:
+                "Unknown"
+            }
+        Button(text) {
+            Task {
+                do {
+                    if state.daemonStatus == .notRegistered
+                        || state.daemonStatus == .notFound
+                    {
+                        try state.registerDaemon()
+                        state.daemonStatus = state.statusForDaemon()
+                    } else {
+                        try await state.unregisterDaemon()
+                        state.daemonStatus = state.statusForDaemon()
+                    }
+                } catch {
+                    logger.error("register/unregister daemon error: \(error)")
                 }
             }
         }

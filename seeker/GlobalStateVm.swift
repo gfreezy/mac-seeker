@@ -102,6 +102,9 @@ class GlobalStateVm {
 
     func start() async throws {
         do {
+            if daemonStatus != .enabled {
+                try registerDaemon()
+            }
             print("[MainApp] start() called")
             lastError = nil
             hasShownErrorAlert = false
@@ -226,6 +229,7 @@ class GlobalStateVm {
         closeConnectionToDaemon()
 
         try SMAppService.daemon(plistName: launchedDaemonServiceName).register()
+
         daemonStatus = statusForDaemon()
 
         // Wait a bit for daemon to start

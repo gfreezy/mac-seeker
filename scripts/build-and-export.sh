@@ -38,6 +38,10 @@ SIGN_IDENTITY="Seeker CI"
 echo "🔨 Building seeker ($CONFIG)..."
 echo "   Project: $PROJECT"
 echo "   Scheme: $SCHEME"
+if [ -n "${MARKETING_VERSION:-}" ]; then
+    echo "   Version: $MARKETING_VERSION"
+    export MARKETING_VERSION
+fi
 echo ""
 
 # Clean previous build
