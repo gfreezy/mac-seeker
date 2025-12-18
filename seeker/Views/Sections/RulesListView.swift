@@ -204,7 +204,7 @@ struct AddRuleSheet: View {
                 Spacer()
 
                 Button("Add") {
-                    configService.addRule(newRule)
+                    configService.addRule(newRule, after: selectedRuleId)
                     selectedRuleId = newRule.id
                     dismiss()
                 }
@@ -213,7 +213,7 @@ struct AddRuleSheet: View {
             }
             .padding()
         }
-        .frame(width: 400, height: 350)
+        .frame(width: 400, height: 500)
     }
 }
 

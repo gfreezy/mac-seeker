@@ -173,9 +173,13 @@ class ConfigurationService {
         }
     }
 
-    func addRule(_ rule: ParsedRule) {
+    func addRule(_ rule: ParsedRule, after id: ParsedRule.ID? = nil) {
         var rules = parsedRules
-        rules.append(rule)
+        if let id = id, let index = rules.firstIndex(where: { $0.id == id }) {
+            rules.insert(rule, at: index + 1)
+        } else {
+            rules.append(rule)
+        }
         parsedRules = rules
     }
 
