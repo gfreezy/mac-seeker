@@ -207,13 +207,19 @@ echo "🔏 Re-signing app..."
 codesign --force --deep --sign "$SIGN_IDENTITY" --keychain "$KEYCHAIN_NAME" "$EXPORT_PATH/seeker.app"
 codesign --verify --verbose "$EXPORT_PATH/seeker.app"
 
-# Create DMG
+# Create DMG with Applications shortcut
 echo ""
 echo "💿 Creating DMG..."
+DMG_STAGING="$BUILD_DIR/dmg-staging"
+rm -rf "$DMG_STAGING"
+mkdir -p "$DMG_STAGING"
+cp -R "$EXPORT_PATH/seeker.app" "$DMG_STAGING/"
+ln -s /Applications "$DMG_STAGING/Applications"
 hdiutil create -volname "Seeker" \
-    -srcfolder "$EXPORT_PATH/seeker.app" \
+    -srcfolder "$DMG_STAGING" \
     -ov -format UDZO \
     "$BUILD_DIR/Seeker.dmg"
+rm -rf "$DMG_STAGING"
 
 echo ""
 echo "✅ Build complete!"
