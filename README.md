@@ -39,22 +39,35 @@ Run the setup script to create the default configuration:
 
 This creates the config file in the app sandbox container. Edit it to configure your proxy settings.
 
-### 3. Build and Run
+### 3. Build and Install
 
-Open the project in Xcode:
+Use the build script to create a signed app bundle:
+
+```bash
+# Build Release version (recommended)
+./scripts/build-and-export.sh release
+
+# Build Debug version
+./scripts/build-and-export.sh debug
+```
+
+This will:
+- Build the Rust seeker binary from the submodule
+- Create an archived app bundle signed with your Apple Development certificate
+
+Install the app:
+
+```bash
+# Copy to Applications
+cp -R build/export/seeker.app /Applications/
+```
+
+**Note:** The build script requires an Apple Development certificate in your Keychain. You can get one for free by signing into Xcode with your Apple ID.
+
+Alternatively, build directly in Xcode:
 
 ```bash
 open seeker.xcodeproj
-```
-
-Or build from command line:
-
-```bash
-# Debug build
-xcodebuild -scheme seeker -configuration Debug build
-
-# Release build
-xcodebuild -scheme seeker -configuration Release build
 ```
 
 The Rust seeker binary will be automatically compiled and bundled into the app.
