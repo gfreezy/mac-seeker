@@ -448,6 +448,7 @@ enum VMessSecurity: String, CaseIterable {
     case auto = "auto"
     case aes128Gcm = "aes-128-gcm"
     case chacha20Poly1305 = "chacha20-poly1305"
+    case aes128Cfb = "aes-128-cfb"
     case none = "none"
 
     var displayName: String { rawValue }

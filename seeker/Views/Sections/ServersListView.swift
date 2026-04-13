@@ -257,13 +257,13 @@ struct ServerRowView: View {
     var stats: ApiServerStats?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Text(server.name.isEmpty ? "(unnamed)" : server.name)
                     .font(.headline)
                 Spacer()
                 if let stats {
-                    latencyBadge(stats)
+                    statsView(stats)
                 }
             }
             Text("\(server.protocol.displayName) - \(server.addr)")
@@ -274,17 +274,8 @@ struct ServerRowView: View {
     }
 
     @ViewBuilder
-    private func latencyBadge(_ stats: ApiServerStats) -> some View {
-        let latency = stats.latency
-        let color: Color = if latency <= 0 || stats.successRate == 0 {
-            .red
-        } else if latency < 200 {
-            .green
-        } else if latency < 500 {
-            .orange
-        } else {
-            .red
-        }
+    private func statsView(_ stats: ApiServerStats) -> some View {
+        let color = scoreColor(stats)
 
         if stats.successRate == 0 {
             Text("timeout")
@@ -292,15 +283,32 @@ struct ServerRowView: View {
                 .foregroundColor(.white)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)
-                .background(color.opacity(0.8), in: Capsule())
+                .background(Color.red.opacity(0.8), in: Capsule())
         } else {
-            Text("\(Int(latency))ms")
-                .font(.caption2)
-                .foregroundColor(.white)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(color.opacity(0.8), in: Capsule())
+            HStack(spacing: 4) {
+                Text(formatLatency(stats.latency))
+                    .foregroundColor(color)
+                Text("·")
+                    .foregroundColor(.secondary)
+                Text("\(Int(stats.successRate * 100))%")
+                    .foregroundColor(stats.successRate >= 0.8 ? .green : stats.successRate >= 0.5 ? .orange : .red)
+            }
+            .font(.caption2.monospacedDigit())
         }
+    }
+
+    private func scoreColor(_ stats: ApiServerStats) -> Color {
+        let score = stats.score
+        if score < 5000 { return .green }
+        if score < 30000 { return .orange }
+        return .red
+    }
+
+    private func formatLatency(_ ms: Double) -> String {
+        if ms >= 10000 {
+            return String(format: "%.1fs", ms / 1000)
+        }
+        return "\(Int(ms))ms"
     }
 }
 
@@ -544,10 +552,24 @@ struct ServerEditorView: View {
 
 #Preview("Servers List") {
     let service = ConfigurationService(configPath: "/tmp/config.yml")
-    ServersListView(configService: service)
-        .frame(width: 600, height: 500)
+    let sampleStats: [String: ApiServerStats] = [
+        "HK-SS": ApiServerStats(name: "HK-SS", server: "hk.example.com:8388", protocol: "Shadowsocks", score: 1949, latency: 1502, successRate: 0.77, success: 25, failure: 8),
+        "US-VMess": ApiServerStats(name: "US-VMess", server: "us.example.com:443", protocol: "Vmess", score: 24562, latency: 23032, successRate: 0.94, success: 22, failure: 1),
+        "JP-VLESS": ApiServerStats(name: "JP-VLESS", server: "jp.example.com:443", protocol: "Vless", score: 46080, latency: 30725, successRate: 0.67, success: 2, failure: 1),
+        "TW-HY2": ApiServerStats(name: "TW-HY2", server: "tw.example.com:443", protocol: "Hysteria2", score: 100000, latency: 100000, successRate: 0, success: 0, failure: 33),
+    ]
+    ServersListView(configService: service, serverStats: sampleStats)
+        .frame(width: 800, height: 500)
         .onAppear {
-            service.configuration = SeekerConfiguration.defaultConfiguration()
+            var config = SeekerConfiguration.defaultConfiguration()
+            config.servers = [
+                ProxyServer(name: "HK-SS", addr: "hk.example.com:8388", password: "pass123", protocol: .shadowsocks, method: "aes-256-gcm"),
+                ProxyServer(name: "US-VMess", addr: "us.example.com:443", username: "b831381d-6324-4d53-ad4f-8cda48b30811", protocol: .vmess, sni: "us.example.com", vmessSecurity: "auto"),
+                ProxyServer(name: "JP-VLESS", addr: "jp.example.com:443", username: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", protocol: .vless, sni: "jp.example.com", flow: "xtls-rprx-vision"),
+                ProxyServer(name: "TW-HY2", addr: "tw.example.com:443", password: "hy2-auth", protocol: .hysteria2, sni: "tw.example.com"),
+                ProxyServer(name: "SG-SOCKS5", addr: "sg.example.com:1080", username: "user", password: "pass", protocol: .socks5),
+            ]
+            service.configuration = config
             service.isLoaded = true
         }
 }

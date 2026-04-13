@@ -104,7 +104,12 @@ class GlobalStateVm {
 
     private func startApiStatsPolling() {
         apiStatsTask?.cancel()
-        let apiAddr = configService.configuration.apiAddr
+        // configService.configuration may not be loaded yet (loads when Settings window opens),
+        // so read apiAddr directly from the config file as a fallback.
+        var apiAddr = configService.configuration.apiAddr
+        if apiAddr.isEmpty {
+            apiAddr = Self.readApiAddrFromConfig(path: configPath) ?? ""
+        }
         guard !apiAddr.isEmpty else { return }
         apiStatsTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -112,6 +117,25 @@ class GlobalStateVm {
                 try? await Task.sleep(for: .seconds(5))
             }
         }
+    }
+
+    private nonisolated static func readApiAddrFromConfig(path: String) -> String? {
+        guard let data = FileManager.default.contents(atPath: path),
+              let content = String(data: data, encoding: .utf8) else { return nil }
+        // Simple line-based parse for api_addr: "value" or api_addr: value
+        for line in content.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("api_addr:") {
+                var value = String(trimmed.dropFirst("api_addr:".count))
+                    .trimmingCharacters(in: .whitespaces)
+                // Remove surrounding quotes
+                if value.hasPrefix("\"") && value.hasSuffix("\"") {
+                    value = String(value.dropFirst().dropLast())
+                }
+                return value.isEmpty ? nil : value
+            }
+        }
+        return nil
     }
 
     private func stopApiStatsPolling() {
