@@ -19,8 +19,24 @@ struct seekerApp: App {
     @State var state = GlobalStateVm()
     @Environment(\.openWindow) var openWindow
 
+    private var menuBarTitle: String {
+        #if DEBUG
+        "Seeker (D)"
+        #else
+        "Seeker"
+        #endif
+    }
+
+    private var menuBarIcon: String {
+        #if DEBUG
+        state.isStarted ? "ant.fill" : "ant"
+        #else
+        state.isStarted ? "fish.fill" : "fish"
+        #endif
+    }
+
     var body: some Scene {
-        MenuBarExtra("Seeker", systemImage: state.isStarted ? "fish.fill" : "fish") {
+        MenuBarExtra(menuBarTitle, systemImage: menuBarIcon) {
             Button(state.isStarted ? "􀆅 Stop" : "Start") {
                 state.toggle()
             }

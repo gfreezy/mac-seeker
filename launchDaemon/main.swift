@@ -73,7 +73,11 @@ class ServiceDelegate: NSObject, NSXPCListenerDelegate {
 setbuf(stdout, nil)
 setbuf(stderr, nil)
 
+#if DEBUG
+let launchDaemonIdentifier = "io.allsunday.seeker.debug.launchDaemon"
+#else
 let launchDaemonIdentifier = "io.allsunday.seeker.launchDaemon"
+#endif
 print("[Daemon] Starting service: \(launchDaemonIdentifier)")
 
 let delegate = ServiceDelegate()

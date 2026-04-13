@@ -1,0 +1,6 @@
+// Debug.xcconfig
+// Seeker Debug build configuration
+
+BUNDLE_ID_SUFFIX = .debug
+DAEMON_IDENTIFIER = io.allsunday.seeker.debug.launchDaemon
+APP_DISPLAY_NAME = Seeker Debug

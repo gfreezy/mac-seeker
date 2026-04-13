@@ -75,6 +75,8 @@
 		57614CD42D2CEAA9008862EF /* seekerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = seekerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		57614D0C2D2D27C4008862EF /* launchDaemon */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = launchDaemon; sourceTree = BUILT_PRODUCTS_DIR; };
 		57E9D1F32EBC96D1006F6498 /* shared */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = shared; sourceTree = "<group>"; };
+		AABB00012EBD0001006F6498 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		AABB00022EBD0002006F6498 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -88,22 +90,12 @@
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
-/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-		57614D062D2D0146008862EF /* Exceptions for "seeker" folder in "Copy Launch Daemon Plist" phase from "seeker" target */ = {
-			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
-			buildPhase = 57614D042D2D011F008862EF /* Copy Launch Daemon Plist */;
-			membershipExceptions = (
-				io.allsunday.seeker.launchDaemon.plist,
-			);
-		};
-/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		57614CBB2D2CEAA7008862EF /* seeker */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				57614D032D2D0073008862EF /* Exceptions for "seeker" folder in "seeker" target */,
-				57614D062D2D0146008862EF /* Exceptions for "seeker" folder in "Copy Launch Daemon Plist" phase from "seeker" target */,
 			);
 			path = seeker;
 			sourceTree = "<group>";
@@ -159,9 +151,19 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		AABB00032EBD0003006F6498 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				AABB00012EBD0001006F6498 /* Debug.xcconfig */,
+				AABB00022EBD0002006F6498 /* Release.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
 		57614CB02D2CEAA7008862EF = {
 			isa = PBXGroup;
 			children = (
+				AABB00032EBD0003006F6498 /* Config */,
 				57E9D1F32EBC96D1006F6498 /* shared */,
 				57614CBB2D2CEAA7008862EF /* seeker */,
 				57614D0D2D2D27C4008862EF /* launchDaemon */,
@@ -202,6 +204,7 @@
 				57614CB62D2CEAA7008862EF /* Frameworks */,
 				57614CB72D2CEAA7008862EF /* Resources */,
 				57614D042D2D011F008862EF /* Copy Launch Daemon Plist */,
+				AABB00042EBD0004006F6498 /* Generate Daemon Plist */,
 				57614D1B2D2D2A75008862EF /* Copy Launch Daemon Binary */,
 			);
 			buildRules = (
@@ -376,6 +379,26 @@
 			shellScript = "\"${SRCROOT}/scripts/build-rust-seeker.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		AABB00042EBD0004006F6498 /* Generate Daemon Plist */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/generate-daemon-plist.sh",
+			);
+			name = "Generate Daemon Plist";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchDaemons/$(DAEMON_IDENTIFIER).plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/scripts/generate-daemon-plist.sh\"\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -430,6 +453,7 @@
 /* Begin XCBuildConfiguration section */
 		57614CDC2D2CEAA9008862EF /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AABB00012EBD0001006F6498 /* Debug.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -496,6 +520,7 @@
 		};
 		57614CDD2D2CEAA9008862EF /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AABB00022EBD0002006F6498 /* Release.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -555,7 +580,7 @@
 		57614CDF2D2CEAA9008862EF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIconDebug;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = seeker/seeker.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -572,6 +597,8 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = seeker/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Seeker Debug";
+				INFOPLIST_KEY_CFBundleName = "Seeker Debug";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -581,7 +608,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.allsunday.seeker;
+				PRODUCT_BUNDLE_IDENTIFIER = "io.allsunday.seeker$(BUNDLE_ID_SUFFIX)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
@@ -617,7 +644,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.allsunday.seeker;
+				PRODUCT_BUNDLE_IDENTIFIER = "io.allsunday.seeker$(BUNDLE_ID_SUFFIX)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
@@ -711,7 +738,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				OTHER_CODE_SIGN_FLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = io.allsunday.seeker.launchdaemon;
+				PRODUCT_BUNDLE_IDENTIFIER = "io.allsunday.seeker$(BUNDLE_ID_SUFFIX).launchdaemon";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 6.0;
@@ -729,7 +756,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				OTHER_CODE_SIGN_FLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = io.allsunday.seeker.launchdaemon;
+				PRODUCT_BUNDLE_IDENTIFIER = "io.allsunday.seeker$(BUNDLE_ID_SUFFIX).launchdaemon";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 6.0;

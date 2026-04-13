@@ -1,0 +1,6 @@
+// Release.xcconfig
+// Seeker Release build configuration
+
+BUNDLE_ID_SUFFIX =
+DAEMON_IDENTIFIER = io.allsunday.seeker.launchDaemon
+APP_DISPLAY_NAME = Seeker

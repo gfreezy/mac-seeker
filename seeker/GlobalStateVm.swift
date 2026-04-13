@@ -4,7 +4,11 @@ import ServiceManagement
 import SwiftUI
 import shared
 
+#if DEBUG
+let launchDaemonIdentifier = "io.allsunday.seeker.debug.launchDaemon"
+#else
 let launchDaemonIdentifier = "io.allsunday.seeker.launchDaemon"
+#endif
 let launchedDaemonServiceName = "\(launchDaemonIdentifier).plist"
 
 extension SMAppService.Status: @retroactive CustomStringConvertible {
