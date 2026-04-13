@@ -184,6 +184,48 @@ struct ServerDetailView: View {
                 }
             }
 
+            if server.protocol == .hysteria2 {
+                Section("Hysteria2") {
+                    if let sni = server.sni {
+                        LabeledContent("SNI", value: sni)
+                    }
+                    if let obfsPassword = server.obfsPassword {
+                        LabeledContent("Obfs Password", value: obfsPassword)
+                    }
+                    if let insecure = server.insecure {
+                        LabeledContent("Skip TLS Verification", value: insecure ? "Yes" : "No")
+                    }
+                    if let recvWindow = server.recvWindow {
+                        LabeledContent("Recv Window", value: String(recvWindow))
+                    }
+                }
+            }
+
+            if server.protocol == .vmess {
+                Section("VMess") {
+                    LabeledContent("UUID", value: server.username ?? "-")
+                    LabeledContent("Security", value: server.vmessSecurity ?? "auto")
+                    if let sni = server.sni {
+                        LabeledContent("SNI", value: sni)
+                    }
+                }
+            }
+
+            if server.protocol == .vless {
+                Section("VLESS") {
+                    LabeledContent("UUID", value: server.username ?? "-")
+                    if let sni = server.sni {
+                        LabeledContent("SNI", value: sni)
+                    }
+                    if let flow = server.flow {
+                        LabeledContent("Flow", value: flow)
+                    }
+                    if let insecure = server.insecure {
+                        LabeledContent("Skip TLS Verification", value: insecure ? "Yes" : "No")
+                    }
+                }
+            }
+
             if server.username != nil || server.password != nil {
                 Section("Authentication") {
                     if let username = server.username {
@@ -262,7 +304,7 @@ struct AddServerSheet: View {
             }
             .padding()
         }
-        .frame(width: 400, height: 400)
+        .frame(minWidth: 400, idealWidth: 400, minHeight: 400, idealHeight: 550)
     }
 }
 
@@ -354,6 +396,106 @@ struct ServerEditorView: View {
                                 set: { server.obfs?.host = $0 }
                             ))
                     }
+                }
+            }
+
+            if server.protocol == .hysteria2 {
+                Section("Hysteria2") {
+                    TextField(
+                        "SNI",
+                        text: Binding(
+                            get: { server.sni ?? "" },
+                            set: { server.sni = $0.isEmpty ? nil : $0 }
+                        ))
+                        .help("TLS server name, defaults to addr hostname")
+
+                    TextField(
+                        "Obfs Password",
+                        text: Binding(
+                            get: { server.obfsPassword ?? "" },
+                            set: { server.obfsPassword = $0.isEmpty ? nil : $0 }
+                        ))
+                        .help("Salamander obfuscation password (optional)")
+
+                    Toggle(
+                        "Skip TLS Verification",
+                        isOn: Binding(
+                            get: { server.insecure ?? false },
+                            set: { server.insecure = $0 ? true : nil }
+                        ))
+
+                    TextField(
+                        "Recv Window",
+                        text: Binding(
+                            get: { server.recvWindow.map { String($0) } ?? "" },
+                            set: { server.recvWindow = UInt64($0) }
+                        ))
+                        .help("Receive window bandwidth hint (optional)")
+                }
+            }
+
+            if server.protocol == .vmess {
+                Section("VMess") {
+                    TextField(
+                        "UUID",
+                        text: Binding(
+                            get: { server.username ?? "" },
+                            set: { server.username = $0.isEmpty ? nil : $0 }
+                        ))
+                        .help("VMess user ID (UUID)")
+
+                    Picker("Security", selection: Binding(
+                        get: { VMessSecurity(from: server.vmessSecurity) ?? .auto },
+                        set: { server.vmessSecurity = $0.rawValue }
+                    )) {
+                        ForEach(VMessSecurity.allCases, id: \.self) { method in
+                            Text(method.displayName).tag(method)
+                        }
+                    }
+
+                    TextField(
+                        "SNI",
+                        text: Binding(
+                            get: { server.sni ?? "" },
+                            set: { server.sni = $0.isEmpty ? nil : $0 }
+                        ))
+                        .help("TLS server name (optional)")
+                }
+            }
+
+            if server.protocol == .vless {
+                Section("VLESS") {
+                    TextField(
+                        "UUID",
+                        text: Binding(
+                            get: { server.username ?? "" },
+                            set: { server.username = $0.isEmpty ? nil : $0 }
+                        ))
+                        .help("VLESS user ID (UUID)")
+
+                    TextField(
+                        "SNI",
+                        text: Binding(
+                            get: { server.sni ?? "" },
+                            set: { server.sni = $0.isEmpty ? nil : $0 }
+                        ))
+                        .help("TLS server name (optional)")
+
+                    Picker("Flow", selection: Binding(
+                        get: { VLESSFlow(from: server.flow) ?? .none },
+                        set: { server.flow = $0.rawValue.isEmpty ? nil : $0.rawValue }
+                    )) {
+                        ForEach(VLESSFlow.allCases, id: \.self) { flow in
+                            Text(flow.displayName).tag(flow)
+                        }
+                    }
+
+                    Toggle(
+                        "Skip TLS Verification",
+                        isOn: Binding(
+                            get: { server.insecure ?? false },
+                            set: { server.insecure = $0 ? true : nil }
+                        ))
                 }
             }
         }

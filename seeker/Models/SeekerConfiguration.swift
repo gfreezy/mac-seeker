@@ -240,6 +240,12 @@ struct ProxyServer: Codable, Equatable, Identifiable, Hashable {
     var `protocol`: ProxyProtocol = .http
     var method: String?
     var obfs: ObfsConfig?
+    var sni: String?
+    var obfsPassword: String?
+    var insecure: Bool?
+    var recvWindow: UInt64?
+    var vmessSecurity: String?
+    var flow: String?
 
     // Source tracking (not persisted to YAML)
     var source: ServerSource = .local
@@ -248,8 +254,17 @@ struct ProxyServer: Codable, Equatable, Identifiable, Hashable {
         case name, addr, username, password
         case `protocol` = "protocol"
         case method, obfs
+        case sni
+        case obfsPassword = "obfs_password"
+        case insecure
+        case recvWindow = "recv_window"
+        case vmessSecurity = "vmess_security"
+        case flow
         // Clash format alternatives
         case type, server, port, cipher
+        case uuid
+        case servername
+        case skipCertVerify = "skip-cert-verify"
         // Note: source is not included - it's runtime only
     }
 
@@ -257,6 +272,9 @@ struct ProxyServer: Codable, Equatable, Identifiable, Hashable {
         name: String = "", addr: String = "", username: String? = nil,
         password: String? = nil, protocol: ProxyProtocol = .http,
         method: String? = nil, obfs: ObfsConfig? = nil,
+        sni: String? = nil, obfsPassword: String? = nil,
+        insecure: Bool? = nil, recvWindow: UInt64? = nil,
+        vmessSecurity: String? = nil, flow: String? = nil,
         source: ServerSource = .local
     ) {
         self.name = name
@@ -266,6 +284,12 @@ struct ProxyServer: Codable, Equatable, Identifiable, Hashable {
         self.protocol = `protocol`
         self.method = method
         self.obfs = obfs
+        self.sni = sni
+        self.obfsPassword = obfsPassword
+        self.insecure = insecure
+        self.recvWindow = recvWindow
+        self.vmessSecurity = vmessSecurity
+        self.flow = flow
         self.source = source
     }
 
@@ -311,6 +335,21 @@ struct ProxyServer: Codable, Equatable, Identifiable, Hashable {
         }
 
         obfs = try container.decodeIfPresent(ObfsConfig.self, forKey: .obfs)
+
+        // New protocol fields with Clash alias fallbacks
+        sni = try container.decodeIfPresent(String.self, forKey: .sni)
+            ?? container.decodeIfPresent(String.self, forKey: .servername)
+        obfsPassword = try container.decodeIfPresent(String.self, forKey: .obfsPassword)
+        insecure = try container.decodeIfPresent(Bool.self, forKey: .insecure)
+            ?? container.decodeIfPresent(Bool.self, forKey: .skipCertVerify)
+        recvWindow = try container.decodeIfPresent(UInt64.self, forKey: .recvWindow)
+        vmessSecurity = try container.decodeIfPresent(String.self, forKey: .vmessSecurity)
+        flow = try container.decodeIfPresent(String.self, forKey: .flow)
+
+        // Clash "uuid" field -> map to username for VMess/VLESS
+        if username == nil {
+            username = try container.decodeIfPresent(String.self, forKey: .uuid)
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -322,6 +361,12 @@ struct ProxyServer: Codable, Equatable, Identifiable, Hashable {
         try container.encode(`protocol`, forKey: .protocol)
         try container.encodeIfPresent(method, forKey: .method)
         try container.encodeIfPresent(obfs, forKey: .obfs)
+        try container.encodeIfPresent(sni, forKey: .sni)
+        try container.encodeIfPresent(obfsPassword, forKey: .obfsPassword)
+        try container.encodeIfPresent(insecure, forKey: .insecure)
+        try container.encodeIfPresent(recvWindow, forKey: .recvWindow)
+        try container.encodeIfPresent(vmessSecurity, forKey: .vmessSecurity)
+        try container.encodeIfPresent(flow, forKey: .flow)
     }
 }
 
@@ -330,6 +375,9 @@ enum ProxyProtocol: String, Codable, CaseIterable, Hashable {
     case https = "Https"
     case socks5 = "Socks5"
     case shadowsocks = "Shadowsocks"
+    case hysteria2 = "Hysteria2"
+    case vmess = "Vmess"
+    case vless = "Vless"
 
     var displayName: String {
         switch self {
@@ -337,10 +385,13 @@ enum ProxyProtocol: String, Codable, CaseIterable, Hashable {
         case .https: return "HTTPS"
         case .socks5: return "SOCKS5"
         case .shadowsocks: return "Shadowsocks"
+        case .hysteria2: return "Hysteria2"
+        case .vmess: return "VMess"
+        case .vless: return "VLESS"
         }
     }
 
-    /// Initialize from Clash-style type string (e.g., "ss", "socks5", "http")
+    /// Initialize from Clash-style type string (e.g., "ss", "socks5", "http", "vmess", "vless", "hy2")
     init(fromClashType type: String) {
         switch type.lowercased() {
         case "ss", "shadowsocks":
@@ -351,6 +402,12 @@ enum ProxyProtocol: String, Codable, CaseIterable, Hashable {
             self = .https
         case "http":
             self = .http
+        case "hy2", "hysteria2":
+            self = .hysteria2
+        case "vmess":
+            self = .vmess
+        case "vless":
+            self = .vless
         default:
             self = .http
         }
@@ -373,6 +430,50 @@ enum ShadowsocksMethod: String, CaseIterable {
         guard let string = string else { return nil }
         if let method = ShadowsocksMethod(rawValue: string) {
             self = method
+        } else {
+            return nil
+        }
+    }
+}
+
+enum VMessSecurity: String, CaseIterable {
+    case auto = "auto"
+    case aes128Gcm = "aes-128-gcm"
+    case chacha20Poly1305 = "chacha20-poly1305"
+    case none = "none"
+
+    var displayName: String { rawValue }
+
+    init?(from string: String?) {
+        guard let string = string else { return nil }
+        if let s = VMessSecurity(rawValue: string) {
+            self = s
+        } else {
+            return nil
+        }
+    }
+}
+
+enum VLESSFlow: String, CaseIterable {
+    case none = ""
+    case xtlsRprxVision = "xtls-rprx-vision"
+    case xtlsRprxVisionUdp443 = "xtls-rprx-vision-udp443"
+
+    var displayName: String {
+        switch self {
+        case .none: return "None"
+        case .xtlsRprxVision: return "xtls-rprx-vision"
+        case .xtlsRprxVisionUdp443: return "xtls-rprx-vision-udp443"
+        }
+    }
+
+    init?(from string: String?) {
+        guard let string = string, !string.isEmpty else {
+            self = .none
+            return
+        }
+        if let f = VLESSFlow(rawValue: string) {
+            self = f
         } else {
             return nil
         }

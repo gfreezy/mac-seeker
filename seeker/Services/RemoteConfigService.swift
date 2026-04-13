@@ -198,7 +198,7 @@ class RemoteConfigService {
         }
 
         // Try to parse as different formats
-        if let servers = try? parseAsBase64SSSubscription(data: data, sourceURL: urlString) {
+        if let servers = try? parseAsBase64Subscription(data: data, sourceURL: urlString) {
             return servers
         }
 
@@ -206,8 +206,8 @@ class RemoteConfigService {
             return servers
         }
 
-        // Try plain text SS URLs
-        if let servers = try? parseAsPlainSSURLs(data: data, sourceURL: urlString) {
+        // Try plain text proxy URLs (ss://, vmess://, vless://)
+        if let servers = try? parseAsPlainProxyURLs(data: data, sourceURL: urlString) {
             return servers
         }
 
@@ -216,8 +216,8 @@ class RemoteConfigService {
 
     // MARK: - Parsing Methods
 
-    /// Parse Base64-encoded SS subscription format
-    private func parseAsBase64SSSubscription(data: Data, sourceURL: String) throws -> [ProxyServer] {
+    /// Parse Base64-encoded subscription format (ss://, vmess://, vless://)
+    private func parseAsBase64Subscription(data: Data, sourceURL: String) throws -> [ProxyServer] {
         guard let base64String = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) else {
             throw RemoteConfigError.invalidData
@@ -234,29 +234,39 @@ class RemoteConfigService {
             throw RemoteConfigError.base64DecodeFailed
         }
 
-        return parseSSURLLines(decodedString, sourceURL: sourceURL)
+        return parseProxyURLLines(decodedString, sourceURL: sourceURL)
     }
 
-    /// Parse plain text SS URLs (one per line)
-    private func parseAsPlainSSURLs(data: Data, sourceURL: String) throws -> [ProxyServer] {
+    /// Parse plain text proxy URLs (one per line)
+    private func parseAsPlainProxyURLs(data: Data, sourceURL: String) throws -> [ProxyServer] {
         guard let content = String(data: data, encoding: .utf8) else {
             throw RemoteConfigError.invalidData
         }
 
-        let servers = parseSSURLLines(content, sourceURL: sourceURL)
+        let servers = parseProxyURLLines(content, sourceURL: sourceURL)
         guard !servers.isEmpty else {
             throw RemoteConfigError.noServersFound
         }
         return servers
     }
 
-    /// Parse lines containing SS URLs
-    private func parseSSURLLines(_ content: String, sourceURL: String) -> [ProxyServer] {
+    /// Parse lines containing proxy URLs (ss://, vmess://, vless://)
+    private func parseProxyURLLines(_ content: String, sourceURL: String) -> [ProxyServer] {
         return content
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-            .compactMap { parseSSURL($0, sourceURL: sourceURL) }
+            .compactMap { line -> ProxyServer? in
+                let lower = line.lowercased()
+                if lower.hasPrefix("ss://") {
+                    return parseSSURL(line, sourceURL: sourceURL)
+                } else if lower.hasPrefix("vmess://") {
+                    return parseVMessURL(line, sourceURL: sourceURL)
+                } else if lower.hasPrefix("vless://") {
+                    return parseVLESSURL(line, sourceURL: sourceURL)
+                }
+                return nil
+            }
     }
 
     /// Parse a single SS URL into a ProxyServer
@@ -326,6 +336,89 @@ class RemoteConfigService {
         }
 
         return nil
+    }
+
+    /// Parse a VMess URL into a ProxyServer
+    /// Format: vmess://BASE64(json{"v","ps","add","port","id","aid","scy","net","tls","sni"})
+    private func parseVMessURL(_ urlString: String, sourceURL: String) -> ProxyServer? {
+        guard urlString.lowercased().hasPrefix("vmess://") else { return nil }
+
+        let encoded = String(urlString.dropFirst(8)) // Remove "vmess://"
+
+        guard let decoded = decodeBase64(encoded),
+              let jsonData = decoded.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        else { return nil }
+
+        guard let add = json["add"] as? String, !add.isEmpty else { return nil }
+
+        let port: Int
+        if let portStr = json["port"] as? String, let p = Int(portStr) {
+            port = p
+        } else if let p = json["port"] as? Int {
+            port = p
+        } else {
+            port = 443
+        }
+
+        let uuid = json["id"] as? String ?? ""
+        let name = (json["ps"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "\(add):\(port)"
+        let security = json["scy"] as? String ?? "auto"
+        let sni = (json["sni"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+
+        return ProxyServer(
+            name: name,
+            addr: "\(add):\(port)",
+            username: uuid,
+            protocol: .vmess,
+            sni: sni,
+            vmessSecurity: security,
+            source: .remote(url: sourceURL)
+        )
+    }
+
+    /// Parse a VLESS URL into a ProxyServer
+    /// Format: vless://uuid@host:port?sni=xxx&allowInsecure=1&flow=xtls-rprx-vision#name
+    private func parseVLESSURL(_ urlString: String, sourceURL: String) -> ProxyServer? {
+        guard let components = URLComponents(string: urlString),
+              components.scheme?.lowercased() == "vless"
+        else { return nil }
+
+        let uuid = components.user ?? ""
+        guard let host = components.host, !host.isEmpty else { return nil }
+        let port = components.port ?? 443
+
+        let name = components.fragment.flatMap {
+            $0.removingPercentEncoding
+        } ?? "\(host):\(port)"
+
+        var sni: String?
+        var insecure: Bool?
+        var flow: String?
+
+        for item in components.queryItems ?? [] {
+            switch item.name {
+            case "sni":
+                sni = item.value.flatMap { $0.isEmpty ? nil : $0 }
+            case "allowInsecure":
+                insecure = item.value == "1" || item.value == "true"
+            case "flow":
+                flow = item.value.flatMap { $0.isEmpty ? nil : $0 }
+            default:
+                break
+            }
+        }
+
+        return ProxyServer(
+            name: name,
+            addr: "\(host):\(port)",
+            username: uuid,
+            protocol: .vless,
+            sni: sni,
+            insecure: insecure,
+            flow: flow,
+            source: .remote(url: sourceURL)
+        )
     }
 
     /// Parse Clash YAML format with proxies array
