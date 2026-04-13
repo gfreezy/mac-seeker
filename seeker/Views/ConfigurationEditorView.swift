@@ -54,7 +54,7 @@ struct ConfigurationEditorView: View {
                 case .performance:
                     PerformanceSettingsView(config: $configService.configuration)
                 case .servers:
-                    ServersListView(configService: configService)
+                    ServersListView(configService: configService, serverStats: globalState?.serverStats ?? [:])
                 case .groups:
                     ProxyGroupsListView(configService: configService)
                 case .rules:

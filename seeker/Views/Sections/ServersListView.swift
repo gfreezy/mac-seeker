@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ServersListView: View {
     @Bindable var configService: ConfigurationService
+    var serverStats: [String: ApiServerStats] = [:]
     @State private var selectedServerId: ProxyServer.ID?
     @State private var showingAddServer = false
     @State private var searchText = ""
@@ -40,7 +41,7 @@ struct ServersListView: View {
                 if !localServers.isEmpty {
                     Section("Local Servers") {
                         ForEach(localServers) { server in
-                            ServerRowView(server: server)
+                            ServerRowView(server: server, stats: serverStats[server.name])
                                 .tag(server.id)
                         }
                         .onDelete(perform: deleteLocalServers)
@@ -51,7 +52,7 @@ struct ServersListView: View {
                 if !remoteServers.isEmpty {
                     Section("Remote Servers") {
                         ForEach(remoteServers) { server in
-                            ServerRowView(server: server)
+                            ServerRowView(server: server, stats: serverStats[server.name])
                                 .tag(server.id)
                         }
                     }
@@ -253,16 +254,53 @@ struct ServerDetailView: View {
 
 struct ServerRowView: View {
     let server: ProxyServer
+    var stats: ApiServerStats?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(server.name.isEmpty ? "(unnamed)" : server.name)
-                .font(.headline)
+            HStack {
+                Text(server.name.isEmpty ? "(unnamed)" : server.name)
+                    .font(.headline)
+                Spacer()
+                if let stats {
+                    latencyBadge(stats)
+                }
+            }
             Text("\(server.protocol.displayName) - \(server.addr)")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
         .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func latencyBadge(_ stats: ApiServerStats) -> some View {
+        let latency = stats.latency
+        let color: Color = if latency <= 0 || stats.successRate == 0 {
+            .red
+        } else if latency < 200 {
+            .green
+        } else if latency < 500 {
+            .orange
+        } else {
+            .red
+        }
+
+        if stats.successRate == 0 {
+            Text("timeout")
+                .font(.caption2)
+                .foregroundColor(.white)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(color.opacity(0.8), in: Capsule())
+        } else {
+            Text("\(Int(latency))ms")
+                .font(.caption2)
+                .foregroundColor(.white)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(color.opacity(0.8), in: Capsule())
+        }
     }
 }
 

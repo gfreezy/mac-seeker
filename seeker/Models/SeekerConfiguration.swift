@@ -34,6 +34,9 @@ struct SeekerConfiguration: Codable, Equatable {
     var dbPath: String = "seeker.sqlite"
     var geoIp: String = ""
 
+    // API Server
+    var apiAddr: String = ""
+
     // Ping URLs
     var pingUrls: [PingUrl] = []
 
@@ -72,6 +75,7 @@ struct SeekerConfiguration: Codable, Equatable {
         case maxConnectErrors = "max_connect_errors"
         case dbPath = "db_path"
         case geoIp = "geo_ip"
+        case apiAddr = "api_addr"
         case pingUrls = "ping_urls"
         case remoteConfigUrls = "remote_config_urls"
         case servers
@@ -130,6 +134,7 @@ struct SeekerConfiguration: Codable, Equatable {
 
         dbPath = try container.decodeIfPresent(String.self, forKey: .dbPath) ?? "seeker.sqlite"
         geoIp = try container.decodeIfPresent(String.self, forKey: .geoIp) ?? ""
+        apiAddr = try container.decodeIfPresent(String.self, forKey: .apiAddr) ?? ""
 
         pingUrls = try container.decodeIfPresent([PingUrl].self, forKey: .pingUrls) ?? []
         remoteConfigUrls = try container.decodeIfPresent([String].self, forKey: .remoteConfigUrls) ?? []
@@ -168,6 +173,9 @@ struct SeekerConfiguration: Codable, Equatable {
 
         try container.encode(dbPath, forKey: .dbPath)
         try container.encode(geoIp, forKey: .geoIp)
+        if !apiAddr.isEmpty {
+            try container.encode(apiAddr, forKey: .apiAddr)
+        }
 
         try container.encode(pingUrls, forKey: .pingUrls)
         try container.encode(remoteConfigUrls, forKey: .remoteConfigUrls)
@@ -650,5 +658,40 @@ struct ParsedRule: Equatable, Identifiable, Hashable {
             return "\(type.rawValue),\(action.toString())"
         }
         return "\(type.rawValue),\(value),\(action.toString())"
+    }
+}
+
+// MARK: - API Stats Response Models
+
+struct ApiStatsResponse: Decodable {
+    var groups: [String: ApiGroupStats]
+}
+
+struct ApiGroupStats: Decodable {
+    var selectedServer: ApiServerStats
+    var servers: [ApiServerStats]
+
+    enum CodingKeys: String, CodingKey {
+        case selectedServer = "selected_server"
+        case servers
+    }
+}
+
+struct ApiServerStats: Decodable {
+    var name: String
+    var server: String
+    var `protocol`: String
+    var score: Double
+    var latency: Double
+    var successRate: Double
+    var success: Int
+    var failure: Int
+
+    enum CodingKeys: String, CodingKey {
+        case name, server
+        case `protocol` = "protocol"
+        case score, latency
+        case successRate = "success_rate"
+        case success, failure
     }
 }

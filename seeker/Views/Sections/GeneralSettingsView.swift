@@ -27,6 +27,12 @@ struct GeneralSettingsView: View {
                     .help("Path to the GeoIP database file, or download url to the GeoIP database file, default is empty")
             }
 
+            Section("API Server") {
+                TextField("API Address", text: $config.apiAddr)
+                    .textFieldStyle(.roundedBorder)
+                    .help("API server listen address, e.g. 127.0.0.1:7890")
+            }
+
             Section("Remote Clash Config URLs") {
                 StringListEditor(
                     items: $config.remoteConfigUrls,

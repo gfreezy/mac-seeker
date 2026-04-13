@@ -40,8 +40,10 @@ class GlobalStateVm {
         }
     }
     var lastError: String?
+    var serverStats: [String: ApiServerStats] = [:]
     @ObservationIgnored var connectionToService: NSXPCConnection?
     @ObservationIgnored private var pollingTask: Task<Void, Never>?
+    @ObservationIgnored private var apiStatsTask: Task<Void, Never>?
     @ObservationIgnored private var hasShownErrorAlert: Bool = false
     @ObservationIgnored private var isStopping: Bool = false
 
@@ -100,6 +102,41 @@ class GlobalStateVm {
         pollingTask = nil
     }
 
+    private func startApiStatsPolling() {
+        apiStatsTask?.cancel()
+        let apiAddr = configService.configuration.apiAddr
+        guard !apiAddr.isEmpty else { return }
+        apiStatsTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.fetchApiStats(apiAddr: apiAddr)
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
+
+    private func stopApiStatsPolling() {
+        apiStatsTask?.cancel()
+        apiStatsTask = nil
+        serverStats = [:]
+    }
+
+    private func fetchApiStats(apiAddr: String) async {
+        guard let url = URL(string: "http://\(apiAddr)/api/stats") else { return }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let response = try JSONDecoder().decode(ApiStatsResponse.self, from: data)
+            var stats: [String: ApiServerStats] = [:]
+            for (_, group) in response.groups {
+                for server in group.servers {
+                    stats[server.name] = server
+                }
+            }
+            serverStats = stats
+        } catch {
+            // Silently ignore fetch errors - API may not be ready yet
+        }
+    }
+
     func start() async throws {
         do {
             if daemonStatus != .enabled {
@@ -136,6 +173,7 @@ class GlobalStateVm {
 
         // Start polling for seeker status
         startPolling()
+        startApiStatsPolling()
     }
 
     func stop() async {
@@ -167,6 +205,7 @@ class GlobalStateVm {
 
         // Stop polling for seeker status
         stopPolling()
+        stopApiStatsPolling()
     }
 
     func toggle() {
