@@ -2,6 +2,14 @@
 
 # Build and export seeker app
 # Usage: ./scripts/build-and-export.sh [release|debug]
+#
+# Signing modes:
+#   - Default: sign with a local "Apple Development" certificate from the
+#     login keychain (for local builds where you're signed into Xcode).
+#   - SELF_SIGN=1: generate a throwaway self-signed code-signing certificate
+#     at build time, import it into a temporary keychain, sign with it, then
+#     destroy the keychain. No private key is ever committed to the repo.
+#     This is what CI uses.
 
 set -e
 
@@ -30,27 +38,47 @@ BUILD_DIR="$PROJECT_ROOT/build"
 ARCHIVE_PATH="$BUILD_DIR/seeker.xcarchive"
 EXPORT_PATH="$BUILD_DIR/export"
 
-# Get Development Team from environment or auto-detect from first Apple Development certificate
-if [ -z "${DEVELOPMENT_TEAM:-}" ]; then
-    # Get the first Apple Development certificate name
-    CERT_NAME=$(security find-identity -v -p codesigning | grep "Apple Development" | head -1 | sed 's/.*"\(.*\)".*/\1/')
-    if [ -z "$CERT_NAME" ]; then
-        echo "❌ Error: No Apple Development certificate found."
-        echo "   Please sign into Xcode with your Apple ID first, or set DEVELOPMENT_TEAM environment variable."
-        exit 1
-    fi
-    # Extract Team ID (OU field) from certificate
-    CERT_ID=$(echo "$CERT_NAME" | grep -oE '\([A-Z0-9]+\)$' | tr -d '()')
-    DEVELOPMENT_TEAM=$(security find-certificate -c "$CERT_ID" -p 2>/dev/null | openssl x509 -noout -subject 2>/dev/null | grep -oE 'OU=[A-Z0-9]+' | head -1 | cut -d= -f2)
-    if [ -z "$DEVELOPMENT_TEAM" ]; then
-        echo "❌ Error: Could not extract Team ID from certificate."
-        echo "   Please set DEVELOPMENT_TEAM environment variable manually."
-        exit 1
+# Signing mode: SELF_SIGN=1 uses a runtime-generated self-signed certificate.
+SELF_SIGN="${SELF_SIGN:-0}"
+
+# Self-sign settings (only used when SELF_SIGN=1)
+KEYCHAIN_PATH="$BUILD_DIR/seeker-ci.keychain-db"
+KEYCHAIN_PASSWORD="ci"
+CERT_PASSWORD="ci"
+SELF_SIGN_IDENTITY="Seeker CI"
+
+if [ "$SELF_SIGN" = "1" ]; then
+    SIGN_IDENTITY="$SELF_SIGN_IDENTITY"
+    DEVELOPMENT_TEAM=""
+else
+    SIGN_IDENTITY="Apple Development"
+    # Get Development Team from environment or auto-detect from first Apple Development certificate
+    if [ -z "${DEVELOPMENT_TEAM:-}" ]; then
+        # Get the first Apple Development certificate name
+        CERT_NAME=$(security find-identity -v -p codesigning | grep "Apple Development" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+        if [ -z "$CERT_NAME" ]; then
+            echo "❌ Error: No Apple Development certificate found."
+            echo "   Please sign into Xcode with your Apple ID first, set DEVELOPMENT_TEAM,"
+            echo "   or run with SELF_SIGN=1 to use a self-signed certificate."
+            exit 1
+        fi
+        # Extract Team ID (OU field) from certificate
+        CERT_ID=$(echo "$CERT_NAME" | grep -oE '\([A-Z0-9]+\)$' | tr -d '()')
+        DEVELOPMENT_TEAM=$(security find-certificate -c "$CERT_ID" -p 2>/dev/null | openssl x509 -noout -subject 2>/dev/null | grep -oE 'OU=[A-Z0-9]+' | head -1 | cut -d= -f2)
+        if [ -z "$DEVELOPMENT_TEAM" ]; then
+            echo "❌ Error: Could not extract Team ID from certificate."
+            echo "   Please set DEVELOPMENT_TEAM environment variable manually."
+            exit 1
+        fi
     fi
 fi
 
 echo "🔨 Building seeker ($CONFIG)..."
-echo "   Team ID: $DEVELOPMENT_TEAM"
+if [ "$SELF_SIGN" = "1" ]; then
+    echo "   Signing: self-signed ($SELF_SIGN_IDENTITY, generated at build time)"
+else
+    echo "   Signing: Apple Development (Team ID: $DEVELOPMENT_TEAM)"
+fi
 echo "   Project: $PROJECT"
 echo "   Scheme: $SCHEME"
 if [ -n "${MARKETING_VERSION:-}" ]; then
@@ -137,8 +165,80 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
 # Setup code signing
-echo "🔐 Using local Apple Development certificate..."
-security find-identity -v -p codesigning | grep "Apple Development" | head -3
+if [ "$SELF_SIGN" = "1" ]; then
+    echo "🔐 Generating self-signed code-signing certificate..."
+    CERT_DIR="$BUILD_DIR/certs"
+    mkdir -p "$CERT_DIR"
+
+    # OpenSSL config for a code-signing certificate
+    cat > "$CERT_DIR/cert.conf" << 'EOF'
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+CN = Seeker CI
+O = GitHub Actions
+OU = Code Signing
+
+[v3_req]
+keyUsage = critical, digitalSignature
+extendedKeyUsage = critical, codeSigning
+basicConstraints = critical, CA:FALSE
+EOF
+
+    # Generate key + self-signed cert, then bundle into a p12
+    openssl req -x509 -newkey rsa:2048 -days 3650 -nodes \
+        -keyout "$CERT_DIR/signing.key" \
+        -out "$CERT_DIR/signing.crt" \
+        -config "$CERT_DIR/cert.conf" 2>/dev/null
+    openssl pkcs12 -export \
+        -inkey "$CERT_DIR/signing.key" \
+        -in "$CERT_DIR/signing.crt" \
+        -out "$CERT_DIR/signing.p12" \
+        -passout pass:"$CERT_PASSWORD" \
+        -name "$SELF_SIGN_IDENTITY"
+
+    # Import into a temporary keychain
+    echo "🔐 Importing certificate into temporary keychain..."
+    security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+    security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+    security set-keychain-settings "$KEYCHAIN_PATH"
+    security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+    security import "$CERT_DIR/signing.p12" -k "$KEYCHAIN_PATH" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+    # Add to search list without changing the user's default keychain
+    security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+    # Cleanup keychain and generated key material on exit
+    cleanup() {
+        echo ""
+        echo "🧹 Cleaning up temporary keychain and certificate material..."
+        security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+        rm -rf "$CERT_DIR"
+    }
+    trap cleanup EXIT
+
+    security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+else
+    echo "🔐 Using local Apple Development certificate..."
+    security find-identity -v -p codesigning | grep "Apple Development" | head -3
+fi
+
+# Assemble code-signing build settings
+CODE_SIGN_SETTINGS=(
+    CODE_SIGN_STYLE=Manual
+    CODE_SIGN_IDENTITY="$SIGN_IDENTITY"
+    DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM"
+    CODE_SIGNING_REQUIRED=YES
+    CODE_SIGNING_ALLOWED=YES
+)
+if [ "$SELF_SIGN" = "1" ]; then
+    CODE_SIGN_SETTINGS+=(OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH")
+else
+    CODE_SIGN_SETTINGS+=(PROVISIONING_PROFILE_SPECIFIER="")
+fi
 
 # Archive the app
 echo ""
@@ -149,37 +249,20 @@ xcodebuild archive \
     -configuration "$CONFIG" \
     -archivePath "$ARCHIVE_PATH" \
     -destination "generic/platform=macOS" \
-    CODE_SIGN_STYLE=Manual \
-    CODE_SIGN_IDENTITY="Apple Development" \
-    DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
-    CODE_SIGNING_REQUIRED=YES \
-    CODE_SIGNING_ALLOWED=YES \
-    PROVISIONING_PROFILE_SPECIFIER=""
-
-# Create export options plist
-EXPORT_OPTIONS="$BUILD_DIR/ExportOptions.plist"
-cat > "$EXPORT_OPTIONS" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>method</key>
-    <string>mac-application</string>
-    <key>signingStyle</key>
-    <string>manual</string>
-    <key>signingCertificate</key>
-    <string>Apple Development</string>
-    <key>teamID</key>
-    <string>$DEVELOPMENT_TEAM</string>
-</dict>
-</plist>
-EOF
+    "${CODE_SIGN_SETTINGS[@]}"
 
 # Export the app (copy directly from archive, exportArchive often fails for development signing)
 echo ""
 echo "📤 Exporting app..."
 mkdir -p "$EXPORT_PATH"
 cp -R "$ARCHIVE_PATH/Products/Applications/seeker.app" "$EXPORT_PATH/"
+
+# Re-sign with the self-signed identity to ensure the whole bundle is consistent
+if [ "$SELF_SIGN" = "1" ]; then
+    echo ""
+    echo "🔏 Re-signing app with self-signed identity..."
+    codesign --force --deep --sign "$SIGN_IDENTITY" --keychain "$KEYCHAIN_PATH" "$EXPORT_PATH/seeker.app"
+fi
 
 # Verify signing
 echo ""

@@ -39,3 +39,10 @@ rust-seeker/Cargo.lock
 
 # Logs
 *.log
+
+# Signing certificates / private keys must never be committed.
+# CI generates a throwaway self-signed cert at build time (SELF_SIGN=1).
+.github/certs/
+*.p12
+*.key
+signing.crt
