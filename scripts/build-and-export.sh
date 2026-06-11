@@ -193,7 +193,15 @@ EOF
         -keyout "$CERT_DIR/signing.key" \
         -out "$CERT_DIR/signing.crt" \
         -config "$CERT_DIR/cert.conf" 2>/dev/null
-    openssl pkcs12 -export \
+    # OpenSSL 3.x exports PKCS12 with modern algorithms (AES-256 / SHA-256 MAC)
+    # that macOS `security import` cannot read. Use -legacy to emit the old
+    # 3DES/SHA1 format when available (LibreSSL is legacy-compatible already
+    # and doesn't recognize the flag).
+    PKCS12_LEGACY=""
+    if openssl pkcs12 -help 2>&1 | grep -q -- '-legacy'; then
+        PKCS12_LEGACY="-legacy"
+    fi
+    openssl pkcs12 -export $PKCS12_LEGACY \
         -inkey "$CERT_DIR/signing.key" \
         -in "$CERT_DIR/signing.crt" \
         -out "$CERT_DIR/signing.p12" \
