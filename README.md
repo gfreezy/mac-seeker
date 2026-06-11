@@ -72,6 +72,24 @@ open seeker.xcodeproj
 
 The Rust seeker binary will be automatically compiled and bundled into the app.
 
+### Alternative: Install from a Release DMG
+
+Pre-built DMGs are published on the [Releases](https://github.com/gfreezy/mac-seeker/releases) page (built by GitHub Actions). These are signed with a **self-signed certificate** and are **not notarized by Apple**, so Gatekeeper will block them on first launch with a message like *"seeker.app is damaged and can't be opened."*
+
+To run it, strip the quarantine attribute that macOS adds to downloaded files:
+
+```bash
+# 1. Open the DMG and drag seeker.app to /Applications, then:
+xattr -dr com.apple.quarantine /Applications/seeker.app
+
+# 2. Launch it
+open /Applications/seeker.app
+```
+
+`xattr -dr com.apple.quarantine` recursively (`-r`) deletes (`-d`) the `com.apple.quarantine` extended attribute that triggers the Gatekeeper check. This only needs to be done once, right after installing.
+
+> **Note:** Only do this for builds you trust (e.g. your own CI releases). If you'd rather avoid the manual step entirely, build from source with your own Apple Development certificate (above), or sign + notarize with a paid Apple Developer ID.
+
 ### 4. First Run Setup
 
 1. Run the app - it will appear in your menu bar with a fish icon
@@ -142,6 +160,20 @@ When you build the Xcode project:
 - **Rust changes**: Rebuild in Xcode (or manually run `cargo build` in `rust-seeker/`)
 
 ## Troubleshooting
+
+### "seeker.app is damaged and can't be opened" (or won't open)
+
+This happens with DMGs downloaded from Releases because they are self-signed and not notarized. Remove the quarantine attribute:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/seeker.app
+```
+
+Then launch the app again. If you moved the app elsewhere, point the path at its actual location. To inspect the attribute first:
+
+```bash
+xattr /Applications/seeker.app        # lists com.apple.quarantine if present
+```
 
 ### Build fails with "cargo: command not found"
 
