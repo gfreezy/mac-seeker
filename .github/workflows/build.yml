@@ -109,10 +109,10 @@ jobs:
             "$GITHUB_WORKSPACE/build/sparkle"
 
           xmllint --noout build/sparkle/appcast.xml
-          rg -q 'sparkle:edSignature=' build/sparkle/appcast.xml
-          rg -q 'sparkle-signatures:' build/sparkle/appcast.xml
-          rg -Fq "<sparkle:version>$RELEASE_VERSION</sparkle:version>" build/sparkle/appcast.xml
-          rg -Fq "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/Seeker.dmg" build/sparkle/appcast.xml
+          grep -q 'sparkle:edSignature=' build/sparkle/appcast.xml
+          grep -q 'sparkle-signatures:' build/sparkle/appcast.xml
+          grep -Fq "<sparkle:version>$RELEASE_VERSION</sparkle:version>" build/sparkle/appcast.xml
+          grep -Fq "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/Seeker.dmg" build/sparkle/appcast.xml
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
