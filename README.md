@@ -2,6 +2,14 @@
 
 A macOS menu bar application that provides a convenient interface for managing the [Seeker](https://github.com/gfreezy/seeker) Rust-based proxy server.
 
+## Install
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/gfreezy/mac-seeker/main/install.sh | bash
+```
+
+The installer downloads the latest GitHub Release, installs `seeker.app` into `/Applications`, removes its extended attributes, and opens it. It only requests administrator access when `/Applications` is not writable.
+
 ## Features
 
 - 🎯 Menu bar interface for easy access
@@ -12,16 +20,16 @@ A macOS menu bar application that provides a convenient interface for managing t
 - 🔄 Auto-start on login support
 - ⚙️ Configuration and logs stored in app sandbox container
 
-## Prerequisites
+## Build Prerequisites
 
-1. **macOS 13.0+** (required for ServiceManagement framework)
+1. **macOS 15.1+**
 2. **Xcode 15.0+**
 3. **Rust toolchain** (install via [rustup](https://rustup.rs)):
    ```bash
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    ```
 
-## Quick Start
+## Build from Source
 
 ### 1. Clone the Repository
 
