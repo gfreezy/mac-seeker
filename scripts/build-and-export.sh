@@ -83,80 +83,6 @@ echo "   Project: $PROJECT"
 echo "   Scheme: $SCHEME"
 if [ -n "${MARKETING_VERSION:-}" ]; then
     echo "   Version: $MARKETING_VERSION"
-    export MARKETING_VERSION
-
-    # Update MARKETING_VERSION in project file
-    echo ""
-    echo "📝 Updating MARKETING_VERSION to ${MARKETING_VERSION}..."
-    PROJECT_FILE="$PROJECT_ROOT/seeker.xcodeproj/project.pbxproj"
-
-    if [ ! -f "$PROJECT_FILE" ]; then
-        echo "❌ Error: Project file not found at ${PROJECT_FILE}"
-        exit 1
-    fi
-
-    # Update MARKETING_VERSION for main app target (Debug and Release)
-    awk -v version="$MARKETING_VERSION" '
-    BEGIN {
-        in_build_settings = 0
-        block_start_line = 0
-        block_end_line = 0
-        has_main_app_bundle_id = 0
-        line_num = 0
-        block_count = 0
-    }
-
-    {
-        line_num++
-        line = $0
-
-        if (line ~ /buildSettings = \{/) {
-            in_build_settings = 1
-            block_start_line = line_num
-            has_main_app_bundle_id = 0
-        }
-
-        if (in_build_settings && line ~ /PRODUCT_BUNDLE_IDENTIFIER = io\.allsunday\.seeker;/) {
-            has_main_app_bundle_id = 1
-        }
-
-        if (line ~ /^[[:space:]]*\};/ && in_build_settings) {
-            block_end_line = line_num
-            if (has_main_app_bundle_id) {
-                block_ranges[block_count++] = block_start_line "," block_end_line
-            }
-            in_build_settings = 0
-            has_main_app_bundle_id = 0
-        }
-
-        lines[line_num] = line
-    }
-
-    END {
-        if (in_build_settings && has_main_app_bundle_id) {
-            block_ranges[block_count++] = block_start_line "," line_num
-        }
-
-        for (i = 1; i <= line_num; i++) {
-            in_target_block = 0
-            for (j = 0; j < block_count; j++) {
-                split(block_ranges[j], range, ",")
-                if (i >= range[1] && i <= range[2]) {
-                    in_target_block = 1
-                    break
-                }
-            }
-
-            if (in_target_block && lines[i] ~ /^[[:space:]]*MARKETING_VERSION = .*;/) {
-                sub(/MARKETING_VERSION = .*;/, "MARKETING_VERSION = " version ";", lines[i])
-            }
-
-            print lines[i]
-        }
-    }
-    ' "$PROJECT_FILE" > "${PROJECT_FILE}.tmp" && mv "${PROJECT_FILE}.tmp" "$PROJECT_FILE"
-
-    echo "✅ MARKETING_VERSION updated to ${MARKETING_VERSION}"
 fi
 echo ""
 
@@ -248,6 +174,16 @@ else
     CODE_SIGN_SETTINGS+=(PROVISIONING_PROFILE_SPECIFIER="")
 fi
 
+# Version overrides are passed directly to Xcode. The project file remains
+# untouched, so tag builds cannot accidentally commit generated version edits.
+VERSION_BUILD_SETTINGS=()
+if [ -n "${MARKETING_VERSION:-}" ]; then
+    VERSION_BUILD_SETTINGS+=(MARKETING_VERSION="$MARKETING_VERSION")
+fi
+if [ -n "${CURRENT_PROJECT_VERSION:-}" ]; then
+    VERSION_BUILD_SETTINGS+=(CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION")
+fi
+
 # Archive the app
 echo ""
 echo "📦 Creating archive..."
@@ -256,26 +192,88 @@ xcodebuild archive \
     -scheme "$SCHEME" \
     -configuration "$CONFIG" \
     -archivePath "$ARCHIVE_PATH" \
+    -derivedDataPath "$BUILD_DIR/DerivedData" \
     -destination "generic/platform=macOS" \
-    "${CODE_SIGN_SETTINGS[@]}"
+    "${CODE_SIGN_SETTINGS[@]}" \
+    "${VERSION_BUILD_SETTINGS[@]}"
 
 # Export the app (copy directly from archive, exportArchive often fails for development signing)
 echo ""
 echo "📤 Exporting app..."
 mkdir -p "$EXPORT_PATH"
-cp -R "$ARCHIVE_PATH/Products/Applications/seeker.app" "$EXPORT_PATH/"
+ditto "$ARCHIVE_PATH/Products/Applications/seeker.app" "$EXPORT_PATH/seeker.app"
 
-# Re-sign with the self-signed identity to ensure the whole bundle is consistent
-if [ "$SELF_SIGN" = "1" ]; then
+# Xcode's Archive action re-signs Sparkle.framework but leaves Sparkle's nested
+# helpers ad-hoc signed. With Hardened Runtime enabled, that prevents a
+# certificate-signed host app from loading Sparkle. Sign the helpers explicitly
+# from the inside out as recommended by Sparkle, then refresh only the enclosing
+# framework and app signatures. Do not use --deep because the helpers have
+# distinct signing requirements.
+SPARKLE_FRAMEWORK="$EXPORT_PATH/seeker.app/Contents/Frameworks/Sparkle.framework"
+if [ -d "$SPARKLE_FRAMEWORK" ]; then
     echo ""
-    echo "🔏 Re-signing app with self-signed identity..."
-    codesign --force --deep --sign "$SIGN_IDENTITY" --keychain "$KEYCHAIN_PATH" "$EXPORT_PATH/seeker.app"
+    echo "🔏 Signing Sparkle helpers..."
+    CODESIGN_KEYCHAIN_ARGS=()
+    if [ "$SELF_SIGN" = "1" ]; then
+        CODESIGN_KEYCHAIN_ARGS+=(--keychain "$KEYCHAIN_PATH")
+    fi
+    SPARKLE_VERSION="$SPARKLE_FRAMEWORK/Versions/B"
+    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp=none \
+        "${CODESIGN_KEYCHAIN_ARGS[@]}" \
+        "$SPARKLE_VERSION/XPCServices/Installer.xpc"
+    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp=none \
+        --preserve-metadata=entitlements \
+        "${CODESIGN_KEYCHAIN_ARGS[@]}" \
+        "$SPARKLE_VERSION/XPCServices/Downloader.xpc"
+    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp=none \
+        "${CODESIGN_KEYCHAIN_ARGS[@]}" \
+        "$SPARKLE_VERSION/Autoupdate"
+    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp=none \
+        "${CODESIGN_KEYCHAIN_ARGS[@]}" \
+        "$SPARKLE_VERSION/Updater.app"
+    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp=none \
+        "${CODESIGN_KEYCHAIN_ARGS[@]}" \
+        "$SPARKLE_FRAMEWORK"
+    if [ "$SELF_SIGN" = "1" ]; then
+        # A non-Apple self-signed certificate has no Team ID, so Hardened
+        # Runtime library validation cannot establish that Sparkle belongs to
+        # the same team even when both signatures use the same certificate.
+        # Keep this exception scoped to self-signed release artifacts.
+        SELF_SIGN_ENTITLEMENTS="$BUILD_DIR/self-sign.entitlements"
+        codesign -d --entitlements :- "$EXPORT_PATH/seeker.app" \
+            > "$SELF_SIGN_ENTITLEMENTS" 2>/dev/null
+        /usr/libexec/PlistBuddy \
+            -c "Add :com.apple.security.cs.disable-library-validation bool true" \
+            "$SELF_SIGN_ENTITLEMENTS"
+        codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp=none \
+            --entitlements "$SELF_SIGN_ENTITLEMENTS" \
+            "${CODESIGN_KEYCHAIN_ARGS[@]}" \
+            "$EXPORT_PATH/seeker.app"
+    else
+        codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp=none \
+            --preserve-metadata=entitlements \
+            "$EXPORT_PATH/seeker.app"
+    fi
 fi
+
+# Fail the release before packaging when the archive version and tag disagree.
+APP_INFO_PLIST="$EXPORT_PATH/seeker.app/Contents/Info.plist"
+APP_MARKETING_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_INFO_PLIST")
+APP_BUILD_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_INFO_PLIST")
+if [ -n "${MARKETING_VERSION:-}" ] && [ "$APP_MARKETING_VERSION" != "$MARKETING_VERSION" ]; then
+    echo "❌ Error: CFBundleShortVersionString is $APP_MARKETING_VERSION; expected $MARKETING_VERSION."
+    exit 1
+fi
+if [ -n "${CURRENT_PROJECT_VERSION:-}" ] && [ "$APP_BUILD_VERSION" != "$CURRENT_PROJECT_VERSION" ]; then
+    echo "❌ Error: CFBundleVersion is $APP_BUILD_VERSION; expected $CURRENT_PROJECT_VERSION."
+    exit 1
+fi
+echo "   App version: $APP_MARKETING_VERSION ($APP_BUILD_VERSION)"
 
 # Verify signing
 echo ""
 echo "🔏 Verifying code signature..."
-codesign --verify --verbose "$EXPORT_PATH/seeker.app"
+codesign --verify --deep --strict --verbose=2 "$EXPORT_PATH/seeker.app"
 
 # Create DMG with Applications shortcut
 echo ""
@@ -283,7 +281,7 @@ echo "💿 Creating DMG..."
 DMG_STAGING="$BUILD_DIR/dmg-staging"
 rm -rf "$DMG_STAGING"
 mkdir -p "$DMG_STAGING"
-cp -R "$EXPORT_PATH/seeker.app" "$DMG_STAGING/"
+ditto "$EXPORT_PATH/seeker.app" "$DMG_STAGING/seeker.app"
 ln -s /Applications "$DMG_STAGING/Applications"
 hdiutil create -volname "Seeker" \
     -srcfolder "$DMG_STAGING" \

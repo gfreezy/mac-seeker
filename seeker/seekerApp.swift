@@ -16,8 +16,17 @@ enum WindowId {
 
 @main
 struct seekerApp: App {
-    @State var state = GlobalStateVm()
+    @State var state: GlobalStateVm
+    @State private var updateService: UpdateService
     @Environment(\.openWindow) var openWindow
+
+    init() {
+        let state = GlobalStateVm()
+        _state = State(initialValue: state)
+        _updateService = State(
+            initialValue: UpdateService(isSeekerRunning: { state.isStarted })
+        )
+    }
 
     private var menuBarTitle: String {
         #if DEBUG
@@ -46,6 +55,13 @@ struct seekerApp: App {
             Button("Open Settings") {
                 openWindow(id: WindowId.settings)
             }
+
+            #if !DEBUG
+            Button("Check for Updates…") {
+                updateService.checkForUpdates()
+            }
+            .disabled(!updateService.canCheckForUpdates)
+            #endif
 
             Button("Open Config") {
                 state.openConfig()

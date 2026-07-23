@@ -114,8 +114,19 @@ class GlobalStateVm {
     }
 
     private func initializeRuntimeState() async {
+        let shouldResumeAfterUpdate = UpdateResumeState.consumeIfMatching()
         guard daemonStatus == .enabled else { return }
         await updateSeekerStatus()
+
+        if shouldResumeAfterUpdate, !isStarted {
+            do {
+                try await start()
+            } catch {
+                lastError = error.localizedDescription
+            }
+            return
+        }
+
         startPolling()
         if isStarted {
             startApiStatsPolling()

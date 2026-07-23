@@ -25,10 +25,26 @@ jobs:
       - name: Extract version from tag
         if: startsWith(github.ref, 'refs/tags/v')
         id: tag_version
+        shell: bash
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "Release tags must use the stable vX.Y.Z format." >&2
+            exit 1
+          fi
+          VERSION="${BASH_REMATCH[1]}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "📦 Building version: $VERSION"
+
+      - name: Require Sparkle release key
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SPARKLE_ED_PRIVATE_KEY" ]; then
+            echo "SPARKLE_ED_PRIVATE_KEY is required for a signed release." >&2
+            exit 1
+          fi
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -39,6 +55,7 @@ jobs:
           # No private key is committed to the repo.
           SELF_SIGN: "1"
           MARKETING_VERSION: ${{ steps.tag_version.outputs.version }}
+          CURRENT_PROJECT_VERSION: ${{ steps.tag_version.outputs.version }}
         run: ./scripts/build-and-export.sh release
 
       - name: Upload App Artifact
@@ -55,12 +72,56 @@ jobs:
           path: build/Seeker.dmg
           retention-days: 30
 
+      - name: Generate signed appcast
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ steps.tag_version.outputs.version }}
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/sparkle
+          ditto build/Seeker.dmg build/sparkle/Seeker.dmg
+
+          gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$GITHUB_REF_NAME" \
+            -f target_commitish="$GITHUB_SHA" \
+            --jq .body > build/release-notes.md
+          ditto build/release-notes.md build/sparkle/Seeker.md
+
+          SPARKLE_TOOL=$(find build/DerivedData/SourcePackages/artifacts \
+            -type f -path '*/Sparkle/bin/generate_appcast' -print -quit)
+          if [ -z "$SPARKLE_TOOL" ] || [ ! -x "$SPARKLE_TOOL" ]; then
+            echo "Sparkle generate_appcast tool was not found." >&2
+            exit 1
+          fi
+
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$SPARKLE_TOOL" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/" \
+            --embed-release-notes \
+            --link "https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME" \
+            --versions "$RELEASE_VERSION" \
+            --maximum-versions 1 \
+            --maximum-deltas 0 \
+            -o "$GITHUB_WORKSPACE/build/sparkle/appcast.xml" \
+            "$GITHUB_WORKSPACE/build/sparkle"
+
+          xmllint --noout build/sparkle/appcast.xml
+          rg -q 'sparkle:edSignature=' build/sparkle/appcast.xml
+          rg -q 'sparkle-signatures:' build/sparkle/appcast.xml
+          rg -Fq "<sparkle:version>$RELEASE_VERSION</sparkle:version>" build/sparkle/appcast.xml
+          rg -Fq "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/Seeker.dmg" build/sparkle/appcast.xml
+
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
             build/Seeker.dmg
+            build/sparkle/appcast.xml
+          body_path: build/release-notes.md
           draft: false
           prerelease: false
         env:

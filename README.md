@@ -7,6 +7,7 @@ A macOS menu bar application that provides a convenient interface for managing t
 - 🎯 Menu bar interface for easy access
 - 🚀 One-click start/stop of the Seeker proxy
 - 🔀 Persistent proxy-group switching directly from the menu bar
+- ✨ Daily update checks through signed GitHub Releases
 - 🔒 Privileged daemon for managing system-level operations
 - 🔄 Auto-start on login support
 - ⚙️ Configuration and logs stored in app sandbox container
@@ -106,6 +107,7 @@ open /Applications/seeker.app
 - **Start/Stop** - Launch or terminate the Seeker proxy
 - **Proxy Groups** - Switch a group to a fixed server or restore automatic selection; a running Seeker instance restarts automatically
 - **Open Settings** - Open the configuration window
+- **Check for Updates…** - Check the stable GitHub Release feed immediately
 - **Open Log** - Open the seeker log file in your default text editor
 - **Auto Start** - Enable/disable auto-start on login
 - **Quit** - Exit the application
@@ -126,6 +128,8 @@ The app consists of three components:
 3. **Rust Seeker** - The actual proxy server (from [gfreezy/seeker](https://github.com/gfreezy/seeker))
 
 Communication between components uses XPC (Cross-Process Communication) for security and stability.
+
+Release builds check for updates once per day and ask before downloading and installing. Debug builds do not start the updater. Seeker's running state is restored after a successful update when the installed build version matches the selected update. The first updater-enabled version must still be installed manually by users of v1.0.2 or earlier.
 
 ## Development
 
@@ -148,6 +152,10 @@ When you build the Xcode project:
 2. It builds the Rust binary from `rust-seeker/` submodule
 3. The binary is copied to `seeker.app/Contents/MacOS/seeker-proxy`
 4. The daemon can then launch it with proper privileges
+
+### Publishing a Release
+
+Stable releases use `vX.Y.Z` tags. CI passes `X.Y.Z` to both `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`, verifies the archived bundle versions and code signatures, and publishes `Seeker.dmg` with a signed `appcast.xml`. The repository must have a `SPARKLE_ED_PRIVATE_KEY` Actions secret matching the public key embedded in the app. Keep the long-lived private key out of the repository and build logs. Because current CI releases use a non-Apple self-signed certificate, the packaging script explicitly signs Sparkle's nested helpers and disables library validation only on that self-signed artifact; Apple-signed builds retain normal library validation.
 
 ### Debugging
 

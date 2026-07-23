@@ -125,6 +125,50 @@ struct seekerTests {
         #expect(service.availableProxyGroupNames == ["openai"])
     }
 
+    @Test func updaterInfoConfigurationIsEmbedded() throws {
+        let info = try #require(Bundle.main.infoDictionary)
+
+        #expect(
+            info["SUFeedURL"] as? String
+                == "https://github.com/gfreezy/mac-seeker/releases/latest/download/appcast.xml"
+        )
+        #expect(
+            info["SUPublicEDKey"] as? String
+                == "l6OWJQk1eZvfrxilEHA0vrvuUt7xFw9NxuLA9miO7sM="
+        )
+        #expect(info["SUEnableAutomaticChecks"] as? Bool == true)
+        #expect(info["SUScheduledCheckInterval"] as? Int == 86_400)
+        #expect(info["SUAutomaticallyUpdate"] as? Bool == false)
+        #expect(info["SUVerifyUpdateBeforeExtraction"] as? Bool == true)
+        #expect(info["SURequireSignedFeed"] as? Bool == true)
+    }
+
+    @Test func updateResumeStateRequiresAMatchingInstalledVersion() throws {
+        let suiteName = "seeker-tests-update-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        UpdateResumeState.record(targetVersion: "2.0.0", wasRunning: false, defaults: defaults)
+        #expect(!UpdateResumeState.consumeIfMatching(currentVersion: "2.0.0", defaults: defaults))
+
+        UpdateResumeState.record(targetVersion: "2.0.0", wasRunning: true, defaults: defaults)
+        #expect(!UpdateResumeState.consumeIfMatching(currentVersion: "1.0.0", defaults: defaults))
+        #expect(!UpdateResumeState.consumeIfMatching(currentVersion: "2.0.0", defaults: defaults))
+
+        UpdateResumeState.record(targetVersion: "2.0.0", wasRunning: true, defaults: defaults)
+        #expect(UpdateResumeState.consumeIfMatching(currentVersion: "2.0.0", defaults: defaults))
+        #expect(!UpdateResumeState.consumeIfMatching(currentVersion: "2.0.0", defaults: defaults))
+    }
+
+    #if DEBUG
+    @Test @MainActor func updaterIsDisabledInDebugBuilds() {
+        let service = UpdateService(isSeekerRunning: { false })
+
+        #expect(!UpdateService.updatesEnabled)
+        #expect(!service.canCheckForUpdates)
+    }
+    #endif
+
     @MainActor
     private func makeService(
         servers: [String],

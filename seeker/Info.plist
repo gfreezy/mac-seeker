@@ -6,5 +6,19 @@
 	<array>
 		<dict/>
 	</array>
+	<key>SUFeedURL</key>
+	<string>https://github.com/gfreezy/mac-seeker/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>l6OWJQk1eZvfrxilEHA0vrvuUt7xFw9NxuLA9miO7sM=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
+	<key>SURequireSignedFeed</key>
+	<true/>
 </dict>
 </plist>
