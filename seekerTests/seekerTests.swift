@@ -114,6 +114,17 @@ struct seekerTests {
         }
     }
 
+    @Test @MainActor func ruleGroupNamesExcludeTheImplicitDefaultAndDuplicates() {
+        let service = ConfigurationService(configPath: "/tmp/unused-seeker-test.yml")
+        service.configuration.proxyGroups = [
+            ProxyGroup(name: ""),
+            ProxyGroup(name: "openai"),
+            ProxyGroup(name: "openai"),
+        ]
+
+        #expect(service.availableProxyGroupNames == ["openai"])
+    }
+
     @MainActor
     private func makeService(
         servers: [String],

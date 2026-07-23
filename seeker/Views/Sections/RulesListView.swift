@@ -231,11 +231,9 @@ struct RuleEditorView: View {
         case probe = "Probe"
     }
 
-    // All available options including empty string (default)
+    // Empty string is the implicit default group and is always available.
     private var allGroupOptions: [String] {
-        var options = [""]  // Empty string is valid (default proxy)
-        options.append(contentsOf: availableGroups)
-        return options
+        [""] + availableGroups
     }
 
     var body: some View {
@@ -270,7 +268,7 @@ struct RuleEditorView: View {
                 if actionType == .proxy || actionType == .probe {
                     Picker("Proxy Group", selection: $selectedGroup) {
                         ForEach(allGroupOptions, id: \.self) { group in
-                            Text(group.isEmpty ? "(default)" : group).tag(group)
+                            Text(group.isEmpty ? "default" : group).tag(group)
                         }
                     }
                     .onChange(of: selectedGroup) { _, newValue in

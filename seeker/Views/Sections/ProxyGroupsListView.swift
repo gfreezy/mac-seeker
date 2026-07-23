@@ -111,7 +111,7 @@ struct ProxyGroupRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(group.name.isEmpty ? "(unnamed)" : group.name)
+            Text(group.name.isEmpty ? "default" : group.name)
                 .font(.headline)
             Text("\(group.proxies.count) server(s)")
                 .font(.caption)
@@ -209,7 +209,7 @@ struct ProxyGroupEditorView: View {
         Form {
             Section("Basic") {
                 if isDefaultGroup {
-                    LabeledContent("Name", value: "Default")
+                    LabeledContent("Name", value: "default")
                         .help("The implicit group used by PROXY and PROBE rules without a group name")
                 } else {
                     TextField("Name", text: $group.name)

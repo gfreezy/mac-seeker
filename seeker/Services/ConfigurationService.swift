@@ -26,7 +26,7 @@ struct MenuProxyGroup: Identifiable, Equatable {
     let proxies: [String]
     let isMaterialized: Bool
 
-    var displayName: String { name.isEmpty ? "Default" : name }
+    var displayName: String { name.isEmpty ? "default" : name }
 
     var selectedServer: String? {
         guard groupType == .select else { return nil }
@@ -47,9 +47,9 @@ enum ProxyGroupSelectionError: LocalizedError {
         case .unsavedChanges:
             return "Save or revert the settings changes before switching proxies."
         case .groupNotFound(let group):
-            return "Proxy group '\(group.isEmpty ? "Default" : group)' was not found."
+            return "Proxy group '\(group.isEmpty ? "default" : group)' was not found."
         case .serverNotFound(let server, let group):
-            return "Server '\(server)' is not available in proxy group '\(group.isEmpty ? "Default" : group)'."
+            return "Server '\(server)' is not available in proxy group '\(group.isEmpty ? "default" : group)'."
         }
     }
 }
@@ -261,7 +261,11 @@ class ConfigurationService {
     // MARK: - Available Proxy Group Names (for rule actions)
 
     var availableProxyGroupNames: [String] {
-        configuration.proxyGroups.map { $0.name }
+        var seen = Set<String>()
+        return configuration.proxyGroups.compactMap { group in
+            guard !group.name.isEmpty, seen.insert(group.name).inserted else { return nil }
+            return group.name
+        }
     }
 
     // MARK: - Menu Bar Proxy Groups
