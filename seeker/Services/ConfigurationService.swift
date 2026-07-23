@@ -18,6 +18,42 @@ enum ConfigurationError: LocalizedError {
     }
 }
 
+struct MenuProxyGroup: Identifiable, Equatable {
+    var id: String { name }
+    let name: String
+    let groupType: ProxyGroupType
+    let defaultSelected: String?
+    let proxies: [String]
+    let isMaterialized: Bool
+
+    var displayName: String { name.isEmpty ? "Default" : name }
+
+    var selectedServer: String? {
+        guard groupType == .select else { return nil }
+        if let defaultSelected, proxies.contains(defaultSelected) {
+            return defaultSelected
+        }
+        return proxies.first
+    }
+}
+
+enum ProxyGroupSelectionError: LocalizedError {
+    case unsavedChanges
+    case groupNotFound(String)
+    case serverNotFound(String, String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unsavedChanges:
+            return "Save or revert the settings changes before switching proxies."
+        case .groupNotFound(let group):
+            return "Proxy group '\(group.isEmpty ? "Default" : group)' was not found."
+        case .serverNotFound(let server, let group):
+            return "Server '\(server)' is not available in proxy group '\(group.isEmpty ? "Default" : group)'."
+        }
+    }
+}
+
 @MainActor
 @Observable
 class ConfigurationService {
@@ -226,6 +262,140 @@ class ConfigurationService {
 
     var availableProxyGroupNames: [String] {
         configuration.proxyGroups.map { $0.name }
+    }
+
+    // MARK: - Menu Bar Proxy Groups
+
+    var menuProxyGroups: [MenuProxyGroup] {
+        var groups = configuration.proxyGroups.map { group in
+            let proxies = group.name.isEmpty ? uniqueServerNames(availableServerNames) : group.proxies
+            return MenuProxyGroup(
+                name: group.name,
+                groupType: group.groupType,
+                defaultSelected: group.defaultSelected,
+                proxies: proxies,
+                isMaterialized: true
+            )
+        }
+
+        if usesImplicitDefaultGroup && !groups.contains(where: { $0.name.isEmpty }) {
+            groups.insert(
+                MenuProxyGroup(
+                    name: "",
+                    groupType: .urlTest,
+                    defaultSelected: nil,
+                    proxies: uniqueServerNames(availableServerNames),
+                    isMaterialized: false
+                ),
+                at: 0
+            )
+        } else if let defaultIndex = groups.firstIndex(where: { $0.name.isEmpty }), defaultIndex != 0 {
+            groups.insert(groups.remove(at: defaultIndex), at: 0)
+        }
+
+        return groups
+    }
+
+    func selectProxy(groupName: String, serverName: String) throws {
+        try prepareForMenuSelection()
+
+        let previousConfiguration = configuration
+        do {
+            if groupName.isEmpty {
+                let candidates = uniqueServerNames(availableServerNames)
+                guard candidates.contains(serverName) else {
+                    throw ProxyGroupSelectionError.serverNotFound(serverName, groupName)
+                }
+
+                if let index = configuration.proxyGroups.firstIndex(where: { $0.name.isEmpty }) {
+                    configuration.proxyGroups[index].groupType = .select
+                    configuration.proxyGroups[index].defaultSelected = serverName
+                    configuration.proxyGroups[index].proxies = candidates
+                } else {
+                    configuration.proxyGroups.append(
+                        ProxyGroup(
+                            name: "",
+                            groupType: .select,
+                            defaultSelected: serverName,
+                            proxies: candidates
+                        )
+                    )
+                }
+            } else {
+                guard let index = configuration.proxyGroups.firstIndex(where: { $0.name == groupName }) else {
+                    throw ProxyGroupSelectionError.groupNotFound(groupName)
+                }
+                guard configuration.proxyGroups[index].proxies.contains(serverName) else {
+                    throw ProxyGroupSelectionError.serverNotFound(serverName, groupName)
+                }
+                configuration.proxyGroups[index].groupType = .select
+                configuration.proxyGroups[index].defaultSelected = serverName
+            }
+
+            markDirty()
+            try save()
+        } catch {
+            configuration = previousConfiguration
+            markDirty()
+            throw error
+        }
+    }
+
+    func useAutomaticProxySelection(groupName: String) throws {
+        try prepareForMenuSelection()
+
+        let previousConfiguration = configuration
+        do {
+            if groupName.isEmpty {
+                guard configuration.proxyGroups.contains(where: { $0.name.isEmpty }) else {
+                    return
+                }
+                configuration.proxyGroups.removeAll { $0.name.isEmpty }
+            } else {
+                guard let index = configuration.proxyGroups.firstIndex(where: { $0.name == groupName }) else {
+                    throw ProxyGroupSelectionError.groupNotFound(groupName)
+                }
+                configuration.proxyGroups[index].groupType = .urlTest
+                configuration.proxyGroups[index].defaultSelected = nil
+            }
+
+            markDirty()
+            try save()
+        } catch {
+            configuration = previousConfiguration
+            markDirty()
+            throw error
+        }
+    }
+
+    private var usesImplicitDefaultGroup: Bool {
+        parsedRules.contains { rule in
+            switch rule.action {
+            case .proxy(let groupName), .probe(let groupName):
+                return groupName.isEmpty
+            case .direct, .reject:
+                return false
+            }
+        }
+    }
+
+    private func prepareForMenuSelection() throws {
+        guard !isDirty else {
+            throw ProxyGroupSelectionError.unsavedChanges
+        }
+        if isLoaded {
+            try reload()
+        } else {
+            try load()
+        }
+        guard !isDirty else {
+            throw ProxyGroupSelectionError.unsavedChanges
+        }
+    }
+
+    private func uniqueServerNames(_ names: [String]) -> [String] {
+        var seen = Set<String>()
+        return names.filter { seen.insert($0).inserted }
     }
 
     // MARK: - Available Server Names (for proxy groups)

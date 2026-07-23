@@ -6,6 +6,7 @@ A macOS menu bar application that provides a convenient interface for managing t
 
 - 🎯 Menu bar interface for easy access
 - 🚀 One-click start/stop of the Seeker proxy
+- 🔀 Persistent proxy-group switching directly from the menu bar
 - 🔒 Privileged daemon for managing system-level operations
 - 🔄 Auto-start on login support
 - ⚙️ Configuration and logs stored in app sandbox container
@@ -103,7 +104,8 @@ open /Applications/seeker.app
 ### Menu Bar Controls
 
 - **Start/Stop** - Launch or terminate the Seeker proxy
-- **Edit Config** - Open the configuration window
+- **Proxy Groups** - Switch a group to a fixed server or restore automatic selection; a running Seeker instance restarts automatically
+- **Open Settings** - Open the configuration window
 - **Open Log** - Open the seeker log file in your default text editor
 - **Auto Start** - Enable/disable auto-start on login
 - **Quit** - Exit the application

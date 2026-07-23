@@ -41,6 +41,8 @@ struct seekerApp: App {
                 state.toggle()
             }
 
+            proxyGroupsMenu
+
             Button("Open Settings") {
                 openWindow(id: WindowId.settings)
             }
@@ -75,6 +77,85 @@ struct seekerApp: App {
                 .environment(state)
         }
 
+    }
+
+    @ViewBuilder
+    var proxyGroupsMenu: some View {
+        Divider()
+
+        Menu("Proxy Groups") {
+            if let loadError = state.configService.loadError {
+                Text("Configuration error: \(loadError)")
+            } else if state.configService.menuProxyGroups.isEmpty {
+                Text("No proxy groups configured")
+            } else {
+                if state.configService.isDirty {
+                    Text("Save or revert settings changes before switching")
+                    Divider()
+                }
+
+                if state.isSwitchingProxy {
+                    ProgressView("Restarting Seeker…")
+                    Divider()
+                }
+
+                ForEach(state.configService.menuProxyGroups) { group in
+                    proxyGroupMenu(group)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    func proxyGroupMenu(_ group: MenuProxyGroup) -> some View {
+        Menu {
+            Button {
+                Task {
+                    await state.useAutomaticProxySelection(groupName: group.name)
+                }
+            } label: {
+                if group.groupType == .urlTest {
+                    Label("Automatic", systemImage: "checkmark")
+                } else {
+                    Text("Automatic")
+                }
+            }
+            .disabled(group.groupType == .urlTest)
+
+            Divider()
+
+            if group.proxies.isEmpty {
+                Text("No servers available")
+            } else {
+                ForEach(group.proxies, id: \.self) { serverName in
+                    Button {
+                        Task {
+                            await state.selectProxy(
+                                groupName: group.name,
+                                serverName: serverName
+                            )
+                        }
+                    } label: {
+                        if group.selectedServer == serverName {
+                            Label(serverName, systemImage: "checkmark")
+                        } else {
+                            Text(serverName)
+                        }
+                    }
+                    .disabled(group.selectedServer == serverName)
+                }
+            }
+        } label: {
+            Text("\(group.displayName): \(proxyGroupSummary(group))")
+        }
+        .disabled(state.configService.isDirty || state.isSwitchingProxy)
+    }
+
+    private func proxyGroupSummary(_ group: MenuProxyGroup) -> String {
+        if group.groupType == .urlTest {
+            return "Automatic"
+        }
+        return group.selectedServer ?? "First Server"
     }
 
     @ViewBuilder

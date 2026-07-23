@@ -11,6 +11,17 @@ let launchDaemonIdentifier = "io.allsunday.seeker.launchDaemon"
 #endif
 let launchedDaemonServiceName = "\(launchDaemonIdentifier).plist"
 
+enum ProxyGroupRestartError: LocalizedError {
+    case failed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .failed(let message):
+            return "The proxy selection was saved, but Seeker could not be restarted: \(message)"
+        }
+    }
+}
+
 extension SMAppService.Status: @retroactive CustomStringConvertible {
     public var description: String {
         switch self {
@@ -45,6 +56,8 @@ class GlobalStateVm {
     }
     var lastError: String?
     var serverStats: [String: ApiServerStats] = [:]
+    var switchingProxyGroupName: String?
+    var isSwitchingProxy: Bool { switchingProxyGroupName != nil }
     @ObservationIgnored var connectionToService: NSXPCConnection?
     @ObservationIgnored private var pollingTask: Task<Void, Never>?
     @ObservationIgnored private var apiStatsTask: Task<Void, Never>?
@@ -86,9 +99,27 @@ class GlobalStateVm {
         print("[MainApp] configPath: \(self.configPath)")
         // Initialize configuration service
         self.configService = ConfigurationService(configPath: self.configPath)
+        do {
+            try self.configService.load()
+        } catch {
+            self.lastError = error.localizedDescription
+        }
 
         // Establish connection at init to keep it alive
         connectToDaemon()
+
+        Task { @MainActor [weak self] in
+            await self?.initializeRuntimeState()
+        }
+    }
+
+    private func initializeRuntimeState() async {
+        guard daemonStatus == .enabled else { return }
+        await updateSeekerStatus()
+        startPolling()
+        if isStarted {
+            startApiStatsPolling()
+        }
     }
 
     private func startPolling() {
@@ -243,6 +274,50 @@ class GlobalStateVm {
             } else {
                 try await start()
             }
+        }
+    }
+
+    func selectProxy(groupName: String, serverName: String) async {
+        await applyProxyGroupChange(groupName: groupName) {
+            try configService.selectProxy(groupName: groupName, serverName: serverName)
+        }
+    }
+
+    func useAutomaticProxySelection(groupName: String) async {
+        await applyProxyGroupChange(groupName: groupName) {
+            try configService.useAutomaticProxySelection(groupName: groupName)
+        }
+    }
+
+    private func applyProxyGroupChange(
+        groupName: String,
+        change: () throws -> Void
+    ) async {
+        guard !isSwitchingProxy else { return }
+        switchingProxyGroupName = groupName
+        defer { switchingProxyGroupName = nil }
+
+        if seekerStatus.status == .unknown, daemonStatus == .enabled {
+            await updateSeekerStatus()
+        }
+        let wasRunning = isStarted
+        do {
+            try change()
+            if wasRunning {
+                await stop()
+                if let stopError = lastError {
+                    throw ProxyGroupRestartError.failed(stopError)
+                }
+                try await Task.sleep(for: .milliseconds(500))
+                do {
+                    try await start()
+                } catch {
+                    throw ProxyGroupRestartError.failed(error.localizedDescription)
+                }
+            }
+        } catch {
+            lastError = error.localizedDescription
+            showErrorAlert(message: error.localizedDescription)
         }
     }
 

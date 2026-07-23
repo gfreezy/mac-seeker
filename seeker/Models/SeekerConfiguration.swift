@@ -496,24 +496,43 @@ struct ObfsConfig: Codable, Equatable, Hashable {
 
 // MARK: - Proxy Group
 
+enum ProxyGroupType: String, Codable, CaseIterable, Hashable {
+    case select
+    case urlTest = "url_test"
+
+    var displayName: String {
+        switch self {
+        case .select: return "Fixed"
+        case .urlTest: return "Automatic"
+        }
+    }
+}
+
 struct ProxyGroup: Codable, Equatable, Identifiable, Hashable {
     var id = UUID()
     var name: String = ""
+    var groupType: ProxyGroupType = .urlTest
+    var defaultSelected: String?
     var proxies: [String] = []
     var pingUrls: [PingUrl]?
     var pingTimeout: String?
 
     enum CodingKeys: String, CodingKey {
         case name, proxies
+        case groupType = "type"
+        case defaultSelected = "default_selected"
         case pingUrls = "ping_urls"
         case pingTimeout = "ping_timeout"
     }
 
     init(
-        name: String = "", proxies: [String] = [],
+        name: String = "", groupType: ProxyGroupType = .urlTest,
+        defaultSelected: String? = nil, proxies: [String] = [],
         pingUrls: [PingUrl]? = nil, pingTimeout: String? = nil
     ) {
         self.name = name
+        self.groupType = groupType
+        self.defaultSelected = defaultSelected
         self.proxies = proxies
         self.pingUrls = pingUrls
         self.pingTimeout = pingTimeout
@@ -522,6 +541,8 @@ struct ProxyGroup: Codable, Equatable, Identifiable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decode(String.self, forKey: .name)
+        groupType = try container.decodeIfPresent(ProxyGroupType.self, forKey: .groupType) ?? .urlTest
+        defaultSelected = try container.decodeIfPresent(String.self, forKey: .defaultSelected)
         proxies = try container.decode([String].self, forKey: .proxies)
         pingUrls = try container.decodeIfPresent([PingUrl].self, forKey: .pingUrls)
         pingTimeout = try container.decodeIfPresent(String.self, forKey: .pingTimeout)
@@ -530,6 +551,8 @@ struct ProxyGroup: Codable, Equatable, Identifiable, Hashable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(name, forKey: .name)
+        try container.encode(groupType, forKey: .groupType)
+        try container.encodeIfPresent(defaultSelected, forKey: .defaultSelected)
         try container.encode(proxies, forKey: .proxies)
         try container.encodeIfPresent(pingUrls, forKey: .pingUrls)
         try container.encodeIfPresent(pingTimeout, forKey: .pingTimeout)

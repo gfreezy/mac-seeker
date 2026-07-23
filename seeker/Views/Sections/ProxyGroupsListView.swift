@@ -61,7 +61,8 @@ struct ProxyGroupsListView: View {
                     ProxyGroupEditorView(
                         group: $configService.configuration.proxyGroups[index],
                         availableServers: configService.availableServerNames,
-                        defaultPingUrls: configService.configuration.pingUrls
+                        defaultPingUrls: configService.configuration.pingUrls,
+                        isDefaultGroup: configService.configuration.proxyGroups[index].name.isEmpty
                     )
                 } else {
                     ContentUnavailableView(
@@ -114,6 +115,9 @@ struct ProxyGroupRowView: View {
                 .font(.headline)
             Text("\(group.proxies.count) server(s)")
                 .font(.caption)
+                .foregroundColor(.secondary)
+            Text(group.groupType == .urlTest ? "Automatic" : "Fixed: \(group.defaultSelected ?? group.proxies.first ?? "No Server")")
+                .font(.caption2)
                 .foregroundColor(.secondary)
         }
         .padding(.vertical, 2)
@@ -172,6 +176,7 @@ struct ProxyGroupEditorView: View {
     @Binding var group: ProxyGroup
     let availableServers: [String]
     var defaultPingUrls: [PingUrl] = []
+    var isDefaultGroup = false
     @State private var showingServerPicker = false
 
     // Servers that can be added (not already in the group)
@@ -184,44 +189,100 @@ struct ProxyGroupEditorView: View {
         group.pingUrls == nil || group.pingUrls?.isEmpty == true
     }
 
+    private var selectionCandidates: [String] {
+        isDefaultGroup ? availableServers : group.proxies
+    }
+
+    private var defaultSelectedBinding: Binding<String?> {
+        Binding(
+            get: {
+                guard let selected = group.defaultSelected,
+                    selectionCandidates.contains(selected)
+                else { return nil }
+                return selected
+            },
+            set: { group.defaultSelected = $0 }
+        )
+    }
+
     var body: some View {
         Form {
             Section("Basic") {
-                TextField("Name", text: $group.name)
+                if isDefaultGroup {
+                    LabeledContent("Name", value: "Default")
+                        .help("The implicit group used by PROXY and PROBE rules without a group name")
+                } else {
+                    TextField("Name", text: $group.name)
+                }
+
+                Picker("Strategy", selection: $group.groupType) {
+                    Text("Automatic (url_test)").tag(ProxyGroupType.urlTest)
+                    Text("Fixed (select)").tag(ProxyGroupType.select)
+                }
+
+                if group.groupType == .select {
+                    Picker("Default Server", selection: defaultSelectedBinding) {
+                        Text("First Server in List").tag(nil as String?)
+                        ForEach(selectionCandidates, id: \.self) { serverName in
+                            Text(serverName).tag(serverName as String?)
+                        }
+                    }
+                    .disabled(selectionCandidates.isEmpty)
+
+                    if selectionCandidates.isEmpty {
+                        Text("Add at least one server before selecting a fixed proxy.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
 
             Section("Servers") {
-                // Current servers with delete buttons
-                ForEach(group.proxies, id: \.self) { serverName in
-                    HStack {
+                if isDefaultGroup {
+                    Text("Default automatically includes every available server.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    ForEach(selectionCandidates, id: \.self) { serverName in
                         Text(serverName)
                             .font(.system(.body, design: .monospaced))
-                        Spacer()
-                        Button(action: {
-                            group.proxies.removeAll { $0 == serverName }
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Remove server")
                     }
-                }
-                .onMove { source, destination in
-                    group.proxies.move(fromOffsets: source, toOffset: destination)
-                }
+                } else {
+                    // Current servers with delete buttons
+                    ForEach(group.proxies, id: \.self) { serverName in
+                        HStack {
+                            Text(serverName)
+                                .font(.system(.body, design: .monospaced))
+                            Spacer()
+                            Button(action: {
+                                group.proxies.removeAll { $0 == serverName }
+                                if group.defaultSelected == serverName {
+                                    group.defaultSelected = nil
+                                }
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove server")
+                        }
+                    }
+                    .onMove { source, destination in
+                        group.proxies.move(fromOffsets: source, toOffset: destination)
+                    }
 
-                // Add server button
-                Button(action: { showingServerPicker = true }) {
-                    Label("Add Server", systemImage: "plus")
-                }
-                .buttonStyle(.borderless)
-                .disabled(serversToAdd.isEmpty)
+                    // Add server button
+                    Button(action: { showingServerPicker = true }) {
+                        Label("Add Server", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(serversToAdd.isEmpty)
 
-                if availableServers.isEmpty {
-                    Text("No servers available. Add servers first.")
-                        .foregroundColor(.secondary)
-                        .font(.caption)
+                    if availableServers.isEmpty {
+                        Text("No servers available. Add servers first.")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    }
                 }
             }
 
@@ -287,6 +348,11 @@ struct ProxyGroupEditorView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .onChange(of: group.groupType) { _, groupType in
+            if groupType == .urlTest {
+                group.defaultSelected = nil
+            }
+        }
         .sheet(isPresented: $showingServerPicker) {
             ServerPickerSheet(
                 servers: serversToAdd,
