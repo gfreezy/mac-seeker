@@ -46,14 +46,28 @@ jobs:
             exit 1
           fi
 
+      - name: Require fixed app signing certificate
+        if: github.event_name != 'pull_request'
+        env:
+          SIGNING_P12_BASE64: ${{ secrets.MACOS_SIGNING_P12_BASE64 }}
+          SIGNING_P12_PASSWORD: ${{ secrets.MACOS_SIGNING_P12_PASSWORD }}
+        run: |
+          if [ -z "$SIGNING_P12_BASE64" ] || [ -z "$SIGNING_P12_PASSWORD" ]; then
+            echo "MACOS_SIGNING_P12_BASE64 and MACOS_SIGNING_P12_PASSWORD are required." >&2
+            exit 1
+          fi
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build App
         env:
-          # Generate a throwaway self-signed certificate at build time.
-          # No private key is committed to the repo.
+          # Main and tag builds reuse the fixed self-signed certificate stored
+          # in GitHub Actions Secrets. Fork PRs fall back to a throwaway identity.
           SELF_SIGN: "1"
+          SIGNING_P12_BASE64: ${{ secrets.MACOS_SIGNING_P12_BASE64 }}
+          SIGNING_P12_PASSWORD: ${{ secrets.MACOS_SIGNING_P12_PASSWORD }}
+          REQUIRE_FIXED_SIGNING_CERTIFICATE: ${{ github.event_name == 'pull_request' && '0' || '1' }}
           MARKETING_VERSION: ${{ steps.tag_version.outputs.version }}
           CURRENT_PROJECT_VERSION: ${{ steps.tag_version.outputs.version }}
         run: ./scripts/build-and-export.sh release

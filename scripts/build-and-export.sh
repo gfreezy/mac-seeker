@@ -6,10 +6,9 @@
 # Signing modes:
 #   - Default: sign with a local "Apple Development" certificate from the
 #     login keychain (for local builds where you're signed into Xcode).
-#   - SELF_SIGN=1: generate a throwaway self-signed code-signing certificate
-#     at build time, import it into a temporary keychain, sign with it, then
-#     destroy the keychain. No private key is ever committed to the repo.
-#     This is what CI uses.
+#   - SELF_SIGN=1: import a self-signed PKCS#12 certificate supplied through
+#     SIGNING_P12_BASE64 and SIGNING_P12_PASSWORD. CI requires this fixed
+#     identity. Local builds may omit it to generate a throwaway certificate.
 
 set -e
 
@@ -38,18 +37,34 @@ BUILD_DIR="$PROJECT_ROOT/build"
 ARCHIVE_PATH="$BUILD_DIR/seeker.xcarchive"
 EXPORT_PATH="$BUILD_DIR/export"
 
-# Signing mode: SELF_SIGN=1 uses a runtime-generated self-signed certificate.
+# Signing mode: SELF_SIGN=1 uses a fixed or runtime-generated self-signed certificate.
 SELF_SIGN="${SELF_SIGN:-0}"
+SIGNING_P12_BASE64="${SIGNING_P12_BASE64:-}"
+SIGNING_P12_PASSWORD="${SIGNING_P12_PASSWORD:-}"
+REQUIRE_FIXED_SIGNING_CERTIFICATE="${REQUIRE_FIXED_SIGNING_CERTIFICATE:-0}"
+FIXED_SIGNING_CERTIFICATE_SHA256="EE46A339367F47327F8CBFD43B7FD88AA8DDFDACE7B8F278D25D435FF9E54C10"
+USING_FIXED_SIGNING_CERTIFICATE=0
 
 # Self-sign settings (only used when SELF_SIGN=1)
 KEYCHAIN_PATH="$BUILD_DIR/seeker-ci.keychain-db"
 KEYCHAIN_PASSWORD="ci"
-CERT_PASSWORD="ci"
-SELF_SIGN_IDENTITY="Seeker CI"
+CERT_PASSWORD=""
+SELF_SIGN_IDENTITY="Seeker Release"
 
 if [ "$SELF_SIGN" = "1" ]; then
     SIGN_IDENTITY="$SELF_SIGN_IDENTITY"
     DEVELOPMENT_TEAM=""
+    if { [ -n "$SIGNING_P12_BASE64" ] && [ -z "$SIGNING_P12_PASSWORD" ]; } \
+        || { [ -z "$SIGNING_P12_BASE64" ] && [ -n "$SIGNING_P12_PASSWORD" ]; }; then
+        echo "❌ Error: SIGNING_P12_BASE64 and SIGNING_P12_PASSWORD must be provided together."
+        exit 1
+    fi
+    if [ -n "$SIGNING_P12_BASE64" ]; then
+        USING_FIXED_SIGNING_CERTIFICATE=1
+    elif [ "$REQUIRE_FIXED_SIGNING_CERTIFICATE" = "1" ]; then
+        echo "❌ Error: A fixed signing certificate is required for this build."
+        exit 1
+    fi
 else
     SIGN_IDENTITY="Apple Development"
     # Get Development Team from environment or auto-detect from first Apple Development certificate
@@ -75,7 +90,11 @@ fi
 
 echo "🔨 Building seeker ($CONFIG)..."
 if [ "$SELF_SIGN" = "1" ]; then
-    echo "   Signing: self-signed ($SELF_SIGN_IDENTITY, generated at build time)"
+    if [ "$USING_FIXED_SIGNING_CERTIFICATE" = "1" ]; then
+        echo "   Signing: fixed self-signed identity ($SELF_SIGN_IDENTITY)"
+    else
+        echo "   Signing: throwaway self-signed identity ($SELF_SIGN_IDENTITY)"
+    fi
 else
     echo "   Signing: Apple Development (Team ID: $DEVELOPMENT_TEAM)"
 fi
@@ -92,20 +111,27 @@ mkdir -p "$BUILD_DIR"
 
 # Setup code signing
 if [ "$SELF_SIGN" = "1" ]; then
-    echo "🔐 Generating self-signed code-signing certificate..."
     CERT_DIR="$BUILD_DIR/certs"
     mkdir -p "$CERT_DIR"
 
-    # OpenSSL config for a code-signing certificate
-    cat > "$CERT_DIR/cert.conf" << 'EOF'
+    if [ "$USING_FIXED_SIGNING_CERTIFICATE" = "1" ]; then
+        echo "🔐 Loading fixed self-signed code-signing certificate..."
+        printf '%s' "$SIGNING_P12_BASE64" | /usr/bin/base64 -D > "$CERT_DIR/signing.p12"
+        CERT_PASSWORD="$SIGNING_P12_PASSWORD"
+    else
+        echo "🔐 Generating throwaway self-signed code-signing certificate..."
+        CERT_PASSWORD="ci"
+
+        # OpenSSL config for a code-signing certificate
+        cat > "$CERT_DIR/cert.conf" << 'EOF'
 [req]
 distinguished_name = req_distinguished_name
 x509_extensions = v3_req
 prompt = no
 
 [req_distinguished_name]
-CN = Seeker CI
-O = GitHub Actions
+CN = Seeker Release
+O = Seeker
 OU = Code Signing
 
 [v3_req]
@@ -114,25 +140,24 @@ extendedKeyUsage = critical, codeSigning
 basicConstraints = critical, CA:FALSE
 EOF
 
-    # Generate key + self-signed cert, then bundle into a p12
-    openssl req -x509 -newkey rsa:2048 -days 3650 -nodes \
-        -keyout "$CERT_DIR/signing.key" \
-        -out "$CERT_DIR/signing.crt" \
-        -config "$CERT_DIR/cert.conf" 2>/dev/null
-    # OpenSSL 3.x exports PKCS12 with modern algorithms (AES-256 / SHA-256 MAC)
-    # that macOS `security import` cannot read. Use -legacy to emit the old
-    # 3DES/SHA1 format when available (LibreSSL is legacy-compatible already
-    # and doesn't recognize the flag).
-    PKCS12_LEGACY=""
-    if openssl pkcs12 -help 2>&1 | grep -q -- '-legacy'; then
-        PKCS12_LEGACY="-legacy"
+        # Generate key + self-signed cert, then bundle into a p12.
+        openssl req -x509 -newkey rsa:2048 -days 3650 -nodes \
+            -keyout "$CERT_DIR/signing.key" \
+            -out "$CERT_DIR/signing.crt" \
+            -config "$CERT_DIR/cert.conf" 2>/dev/null
+        # OpenSSL 3.x exports PKCS12 with modern algorithms (AES-256 / SHA-256 MAC)
+        # that macOS `security import` cannot read. Use -legacy when available.
+        PKCS12_LEGACY=""
+        if openssl pkcs12 -help 2>&1 | grep -q -- '-legacy'; then
+            PKCS12_LEGACY="-legacy"
+        fi
+        openssl pkcs12 -export $PKCS12_LEGACY \
+            -inkey "$CERT_DIR/signing.key" \
+            -in "$CERT_DIR/signing.crt" \
+            -out "$CERT_DIR/signing.p12" \
+            -passout pass:"$CERT_PASSWORD" \
+            -name "$SELF_SIGN_IDENTITY"
     fi
-    openssl pkcs12 -export $PKCS12_LEGACY \
-        -inkey "$CERT_DIR/signing.key" \
-        -in "$CERT_DIR/signing.crt" \
-        -out "$CERT_DIR/signing.p12" \
-        -passout pass:"$CERT_PASSWORD" \
-        -name "$SELF_SIGN_IDENTITY"
 
     # Import into a temporary keychain
     echo "🔐 Importing certificate into temporary keychain..."
@@ -145,6 +170,18 @@ EOF
     # Add to search list without changing the user's default keychain
     security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
 
+    if [ "$USING_FIXED_SIGNING_CERTIFICATE" = "1" ]; then
+        ACTUAL_SIGNING_CERTIFICATE_SHA256=$(security find-certificate \
+            -c "$SELF_SIGN_IDENTITY" -p "$KEYCHAIN_PATH" \
+            | openssl x509 -noout -fingerprint -sha256 \
+            | cut -d= -f2 | tr -d ':')
+        if [ "$ACTUAL_SIGNING_CERTIFICATE_SHA256" != "$FIXED_SIGNING_CERTIFICATE_SHA256" ]; then
+            echo "❌ Error: The imported signing certificate does not match the pinned identity."
+            exit 1
+        fi
+        echo "   Certificate SHA-256: $ACTUAL_SIGNING_CERTIFICATE_SHA256"
+    fi
+
     # Cleanup keychain and generated key material on exit
     cleanup() {
         echo ""
@@ -154,7 +191,8 @@ EOF
     }
     trap cleanup EXIT
 
-    security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+    security find-certificate -c "$SELF_SIGN_IDENTITY" -p "$KEYCHAIN_PATH" \
+        | openssl x509 -noout -subject
 else
     echo "🔐 Using local Apple Development certificate..."
     security find-identity -v -p codesigning | grep "Apple Development" | head -3

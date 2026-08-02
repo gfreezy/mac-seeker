@@ -163,7 +163,7 @@ When you build the Xcode project:
 
 ### Publishing a Release
 
-Stable releases use `vX.Y.Z` tags. CI passes `X.Y.Z` to both `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`, verifies the archived bundle versions and code signatures, and publishes `Seeker.dmg` with a signed `appcast.xml`. The repository must have a `SPARKLE_ED_PRIVATE_KEY` Actions secret matching the public key embedded in the app. Keep the long-lived private key out of the repository and build logs. Because current CI releases use a non-Apple self-signed certificate, the packaging script explicitly signs Sparkle's nested helpers and disables library validation only on that self-signed artifact; Apple-signed builds retain normal library validation.
+Stable releases use `vX.Y.Z` tags. CI passes `X.Y.Z` to both `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`, verifies the archived bundle versions and code signatures, and publishes `Seeker.dmg` with a signed `appcast.xml`. The repository must have a `SPARKLE_ED_PRIVATE_KEY` Actions secret matching the public key embedded in the app, plus `MACOS_SIGNING_P12_BASE64` and `MACOS_SIGNING_P12_PASSWORD` secrets for the fixed self-signed App identity. Keep these long-lived private keys out of the repository and build logs. The packaging script pins the public certificate fingerprint, explicitly signs Sparkle's nested helpers, and disables library validation only on the self-signed artifact; Apple-signed builds retain normal library validation.
 
 ### Debugging
 
