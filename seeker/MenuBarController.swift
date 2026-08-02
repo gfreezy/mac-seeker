@@ -35,7 +35,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         self.state = state
         self.updateService = updateService
         self.openSettings = openSettings
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
 
         rootMenu.autoenablesItems = false
@@ -93,8 +93,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let image = NSImage(systemSymbolName: imageName, accessibilityDescription: title)
         image?.isTemplate = true
         button.image = image
-        button.title = title
-        button.imagePosition = .imageLeading
         button.toolTip = state.isStarted ? "Seeker is running" : "Seeker is stopped"
     }
 
