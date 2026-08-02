@@ -228,7 +228,13 @@ class ConfigurationService {
 
     func moveRule(from source: IndexSet, to destination: Int) {
         var rules = parsedRules
-        rules.move(fromOffsets: source, toOffset: destination)
+        let movingRules = source.compactMap { rules.indices.contains($0) ? rules[$0] : nil }
+        for index in source.reversed() where rules.indices.contains(index) {
+            rules.remove(at: index)
+        }
+        let removedBeforeDestination = source.filter { $0 < destination }.count
+        let insertionIndex = max(0, min(destination - removedBeforeDestination, rules.count))
+        rules.insert(contentsOf: movingRules, at: insertionIndex)
         parsedRules = rules
     }
 

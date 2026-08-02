@@ -131,7 +131,7 @@ open /Applications/seeker.app
 
 The app consists of three components:
 
-1. **Menu Bar App** - SwiftUI interface in the menu bar
+1. **Menu Bar App** - Native AppKit menu bar and settings interface
 2. **Launch Daemon** - Privileged daemon that manages the Seeker process
 3. **Rust Seeker** - The actual proxy server (from [gfreezy/seeker](https://github.com/gfreezy/seeker))
 

@@ -125,6 +125,23 @@ struct seekerTests {
         #expect(service.availableProxyGroupNames == ["openai"])
     }
 
+    @Test @MainActor func rulesCanBeReorderedWithoutSwiftUIHelpers() {
+        let service = ConfigurationService(configPath: "/tmp/unused-seeker-test.yml")
+        service.configuration.rules = [
+            "DOMAIN,first.example,DIRECT",
+            "DOMAIN,second.example,DIRECT",
+            "MATCH,REJECT",
+        ]
+
+        service.moveRule(from: IndexSet(integer: 0), to: 3)
+
+        #expect(service.configuration.rules == [
+            "DOMAIN,second.example,DIRECT",
+            "MATCH,REJECT",
+            "DOMAIN,first.example,DIRECT",
+        ])
+    }
+
     @Test func updaterInfoConfigurationIsEmbedded() throws {
         let info = try #require(Bundle.main.infoDictionary)
 

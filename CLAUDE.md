@@ -39,7 +39,7 @@ xcodebuild clean -scheme seeker
 
 ### Three-Process Design
 
-1. **Main App** (`seeker/`) - SwiftUI MenuBarExtra app, XPC client
+1. **Main App** (`seeker/`) - AppKit menu bar app and XPC client
 2. **Launch Daemon** (`launchDaemon/`) - Privileged launchd service, XPC server, manages Rust process lifecycle
 3. **Rust Seeker** (`rust-seeker/` submodule) - The actual proxy server binary, bundled at `seeker.app/Contents/MacOS/seeker-proxy`
 
@@ -69,8 +69,8 @@ Dependencies: [Yams](https://github.com/jpsim/Yams) (YAML parsing)
 
 **Views:**
 - `seeker/seekerApp.swift` - `@main` app entry. MenuBarExtra with fish icon, plus a "Settings" WindowGroup.
-- `seeker/ContentView.swift` - Daemon management UI (register/unregister, start/stop, status).
-- `seeker/Views/ConfigurationEditorView.swift` - NavigationSplitView with sidebar sections: General, DNS, TUN Device, Performance, Servers, Proxy Groups, Rules. Each section has a corresponding view in `Views/Sections/`.
+- `seeker/MenuBarController.swift` - Native status item and daemon/proxy controls.
+- `seeker/AppKit/SettingsWindowController.swift` - Native settings sidebar and save/reload flow; section controllers live in `seeker/AppKit/`.
 
 ### File Paths at Runtime
 - Config: `~/Library/Application Support/seeker/config.yml`
