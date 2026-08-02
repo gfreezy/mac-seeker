@@ -13,11 +13,7 @@ struct seekerApp: App {
 
     var body: some Scene {
         Settings {
-            ConfigurationEditorView(
-                configService: appDelegate.state.configService,
-                globalState: appDelegate.state
-            )
-            .environment(appDelegate.state)
+            EmptyView()
         }
     }
 }
