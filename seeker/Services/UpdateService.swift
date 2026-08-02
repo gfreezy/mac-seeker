@@ -69,10 +69,11 @@ final class UpdateService: NSObject, SPUUpdaterDelegate {
         canCheckObservation = controller.updater.observe(
             \.canCheckForUpdates,
             options: [.initial, .new]
-        ) { [weak self] updater, _ in
-            let canCheckForUpdates = updater.canCheckForUpdates
+        ) { [weak self] _, _ in
             Task { @MainActor [weak self] in
-                self?.canCheckForUpdates = canCheckForUpdates
+                guard let self else { return }
+                self.canCheckForUpdates =
+                    self.updaterController?.updater.canCheckForUpdates ?? false
             }
         }
         controller.startUpdater()

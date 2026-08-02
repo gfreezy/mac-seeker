@@ -417,6 +417,32 @@ class GlobalStateVm {
         Self.getDaemonStatus()
     }
 
+    /// NSXPC invokes its callbacks on private dispatch queues. Build these handlers
+    /// outside the main-actor context so Swift does not attach a main-executor
+    /// precondition to the callback itself.
+    nonisolated private static func makeConnectionInvalidationHandler(
+        for state: GlobalStateVm,
+        connection: NSXPCConnection
+    ) -> @Sendable () -> Void {
+        let connectionID = ObjectIdentifier(connection)
+        return { [weak state] in
+            print("[MainApp] XPC connection invalidated")
+            Task { @MainActor [weak state] in
+                guard let state, let currentConnection = state.connectionToService,
+                      ObjectIdentifier(currentConnection) == connectionID else { return }
+                state.connectionToService = nil
+            }
+        }
+    }
+
+    nonisolated private static func handleXPCInterruption() {
+        print("[MainApp] XPC connection interrupted - will reconnect on next call")
+    }
+
+    nonisolated private static func handleXPCProxyError(_ error: Error) {
+        print("[MainApp] XPC proxy error handler called: \(error)")
+    }
+
     private func connectToDaemon() {
         print("[MainApp] connectToDaemon() called")
 
@@ -430,18 +456,11 @@ class GlobalStateVm {
         let interface = NSXPCInterface(with: LaunchDaemonProtocol.self)
         connection.remoteObjectInterface = interface
 
-        // Set up error handlers with weak self to avoid retain cycles
-        connection.invalidationHandler = { [weak self] in
-            print("[MainApp] XPC connection invalidated")
-            Task { @MainActor [weak self] in
-                self?.connectionToService = nil
-            }
-        }
-
-        connection.interruptionHandler = {
-            print("[MainApp] XPC connection interrupted - will reconnect on next call")
-            // Don't clear the connection on interruption - XPC may recover automatically
-        }
+        connection.invalidationHandler = Self.makeConnectionInvalidationHandler(
+            for: self,
+            connection: connection
+        )
+        connection.interruptionHandler = Self.handleXPCInterruption
         connection.exportedInterface = NSXPCInterface(with: LaunchDaemonProtocol.self)
         // Resume the connection - this is critical!
         connection.resume()
@@ -483,10 +502,8 @@ class GlobalStateVm {
 
         print("[MainApp] Getting remote proxy...")
         // Use remoteObjectProxyWithErrorHandler for better error logging
-        let proxy =
-            connection.remoteObjectProxyWithErrorHandler { error in
-                print("[MainApp] XPC proxy error handler called: \(error)")
-            } as? LaunchDaemonProtocol
+        let proxy = connection.remoteObjectProxyWithErrorHandler(Self.handleXPCProxyError)
+            as? LaunchDaemonProtocol
 
         guard let proxy else {
             print("[MainApp] Failed to get daemon proxy")

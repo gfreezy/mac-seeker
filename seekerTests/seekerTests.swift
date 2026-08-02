@@ -6,11 +6,19 @@
 //
 
 import Foundation
+import ServiceManagement
 import Testing
 import Yams
 @testable import seeker
 
 struct seekerTests {
+
+    @Test func serviceManagementMenuActionsMatchStatus() {
+        #expect(serviceManagementMenuAction(for: .notFound) == .register)
+        #expect(serviceManagementMenuAction(for: .notRegistered) == .register)
+        #expect(serviceManagementMenuAction(for: .enabled) == .unregister)
+        #expect(serviceManagementMenuAction(for: .requiresApproval) == .openApprovalSettings)
+    }
 
     @Test func legacyProxyGroupDefaultsToUrlTest() throws {
         let yaml = """

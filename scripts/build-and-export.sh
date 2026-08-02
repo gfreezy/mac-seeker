@@ -66,17 +66,21 @@ if [ "$SELF_SIGN" = "1" ]; then
         exit 1
     fi
 else
-    SIGN_IDENTITY="Apple Development"
-    # Get Development Team from environment or auto-detect from first Apple Development certificate
+    # Resolve the certificate to its SHA-1 identity so later codesign calls are
+    # deterministic even when the keychain contains duplicate display names.
+    IDENTITY_QUERY="${SIGN_IDENTITY:-Apple Development}"
+    CERT_LINE=$(security find-identity -v -p codesigning | grep "$IDENTITY_QUERY" | head -1)
+    if [ -z "$CERT_LINE" ]; then
+        echo "❌ Error: No Apple Development certificate found."
+        echo "   Please sign into Xcode with your Apple ID first, set DEVELOPMENT_TEAM,"
+        echo "   or run with SELF_SIGN=1 to use a self-signed certificate."
+        exit 1
+    fi
+    SIGN_IDENTITY=$(echo "$CERT_LINE" | awk '{print $2}')
+    CERT_NAME=$(echo "$CERT_LINE" | sed 's/.*"\(.*\)".*/\1/')
+
+    # Get Development Team from environment or auto-detect from the selected certificate.
     if [ -z "${DEVELOPMENT_TEAM:-}" ]; then
-        # Get the first Apple Development certificate name
-        CERT_NAME=$(security find-identity -v -p codesigning | grep "Apple Development" | head -1 | sed 's/.*"\(.*\)".*/\1/')
-        if [ -z "$CERT_NAME" ]; then
-            echo "❌ Error: No Apple Development certificate found."
-            echo "   Please sign into Xcode with your Apple ID first, set DEVELOPMENT_TEAM,"
-            echo "   or run with SELF_SIGN=1 to use a self-signed certificate."
-            exit 1
-        fi
         # Extract Team ID (OU field) from certificate
         CERT_ID=$(echo "$CERT_NAME" | grep -oE '\([A-Z0-9]+\)$' | tr -d '()')
         DEVELOPMENT_TEAM=$(security find-certificate -c "$CERT_ID" -p 2>/dev/null | openssl x509 -noout -subject 2>/dev/null | grep -oE 'OU=[A-Z0-9]+' | head -1 | cut -d= -f2)

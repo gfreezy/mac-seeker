@@ -7,6 +7,26 @@ private let menuBarLogger = Logger(
     category: "menu-bar"
 )
 
+enum ServiceManagementMenuAction: Equatable {
+    case register
+    case unregister
+    case openApprovalSettings
+    case none
+}
+
+func serviceManagementMenuAction(for status: SMAppService.Status) -> ServiceManagementMenuAction {
+    switch status {
+    case .notFound, .notRegistered:
+        return .register
+    case .enabled:
+        return .unregister
+    case .requiresApproval:
+        return .openApprovalSettings
+    @unknown default:
+        return .none
+    }
+}
+
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
     private final class ProxySelection: NSObject {
@@ -112,6 +132,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             actionItem(title: "Open Settings", action: #selector(showSettings))
         )
 
+        rootMenu.addItem(actionItem(title: "Open Config", action: #selector(openConfig)))
+        rootMenu.addItem(actionItem(title: "Open Log", action: #selector(openLog)))
+        rootMenu.addItem(actionItem(title: "Open Folder", action: #selector(openFolder)))
+        rootMenu.addItem(autoStartItem())
+        rootMenu.addItem(daemonItem())
+        rootMenu.addItem(.separator())
+
         #if !DEBUG
         let updateItem = actionItem(
             title: "Check for Updates…",
@@ -119,14 +146,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         )
         updateItem.isEnabled = updateService.canCheckForUpdates
         rootMenu.addItem(updateItem)
-        #endif
-
-        rootMenu.addItem(actionItem(title: "Open Config", action: #selector(openConfig)))
-        rootMenu.addItem(actionItem(title: "Open Log", action: #selector(openLog)))
-        rootMenu.addItem(actionItem(title: "Open Folder", action: #selector(openFolder)))
-        rootMenu.addItem(autoStartItem())
-        rootMenu.addItem(daemonItem())
         rootMenu.addItem(.separator())
+        #endif
 
         let quitItem = actionItem(
             title: "Quit",
@@ -315,12 +336,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                if state.autoStartOnLogin == .notRegistered
-                    || state.autoStartOnLogin == .notFound
-                {
+                switch serviceManagementMenuAction(for: state.autoStartOnLogin) {
+                case .register:
                     try state.registerAutoStart()
-                } else {
+                case .unregister:
                     try await state.unregisterAutoStart()
+                case .openApprovalSettings:
+                    SMAppService.openSystemSettingsLoginItems()
+                case .none:
+                    break
                 }
             } catch {
                 menuBarLogger.error("register auto start error: \(error)")
@@ -332,14 +356,17 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                if state.daemonStatus == .notRegistered
-                    || state.daemonStatus == .notFound
-                {
+                switch serviceManagementMenuAction(for: state.daemonStatus) {
+                case .register:
                     try state.registerDaemon()
                     state.daemonStatus = state.statusForDaemon()
-                } else {
+                case .unregister:
                     try await state.unregisterDaemon()
                     state.daemonStatus = state.statusForDaemon()
+                case .openApprovalSettings:
+                    SMAppService.openSystemSettingsLoginItems()
+                case .none:
+                    break
                 }
             } catch {
                 menuBarLogger.error("register/unregister daemon error: \(error)")
