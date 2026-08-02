@@ -213,10 +213,11 @@ final class ProxyGroupsViewController: NSViewController, NSTableViewDataSource, 
         }
 
         if isDefault {
-            let serverText = NSTextField(wrappingLabelWithString: candidates.isEmpty ? "No servers available." : candidates.joined(separator: "\n"))
-            serverText.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-            serverText.textColor = .secondaryLabelColor
-            stack.addArrangedSubview(makeSection("Servers · all available servers", rows: [serverText]))
+            let serverList = makeReadOnlyTextArea(
+                text: candidates.isEmpty ? "No servers available." : candidates.joined(separator: "\n"),
+                height: 160
+            )
+            stack.addArrangedSubview(makeSection("Servers · all available servers", rows: [serverList]))
         } else {
             let editor = makeMultilineEditor(text: group.proxies.joined(separator: "\n"), height: 160) { [weak self] value in
                 self?.mutate(name: name) { target in

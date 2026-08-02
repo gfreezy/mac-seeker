@@ -1,6 +1,11 @@
 import AppKit
 
 @MainActor
+final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+@MainActor
 final class CallbackTextField: NSTextField, NSTextFieldDelegate {
     var onChange: ((String) -> Void)?
 
@@ -94,16 +99,18 @@ func makeSection(_ title: String, rows: [NSView]) -> NSView {
     rowsStack.orientation = .vertical
     rowsStack.alignment = .leading
     rowsStack.spacing = 10
-    rowsStack.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
-    rowsStack.wantsLayer = true
-    rowsStack.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
-    rowsStack.layer?.cornerRadius = 9
+    for row in rows {
+        row.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
+    }
 
-    let section = NSStackView(views: [titleLabel, rowsStack])
+    let separator = NSBox()
+    separator.boxType = .separator
+    let section = NSStackView(views: [titleLabel, rowsStack, separator])
     section.orientation = .vertical
     section.alignment = .leading
-    section.spacing = 6
+    section.spacing = 10
     rowsStack.widthAnchor.constraint(equalTo: section.widthAnchor).isActive = true
+    separator.widthAnchor.constraint(equalTo: section.widthAnchor).isActive = true
     return section
 }
 
@@ -147,25 +154,51 @@ func makeMultilineEditor(
 }
 
 @MainActor
+func makeReadOnlyTextArea(text: String, height: CGFloat = 140) -> NSScrollView {
+    let textView = NSTextView()
+    textView.string = text
+    textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+    textView.isEditable = false
+    textView.isSelectable = true
+    textView.isRichText = false
+    textView.drawsBackground = false
+
+    let scroll = NSScrollView()
+    scroll.documentView = textView
+    scroll.hasVerticalScroller = true
+    scroll.borderType = .bezelBorder
+    scroll.drawsBackground = false
+    scroll.heightAnchor.constraint(equalToConstant: height).isActive = true
+    return scroll
+}
+
+@MainActor
 func makeFormScrollView(stack: NSStackView) -> NSScrollView {
-    let document = NSView()
+    let document = FlippedView()
     document.translatesAutoresizingMaskIntoConstraints = false
     stack.translatesAutoresizingMaskIntoConstraints = false
     document.addSubview(stack)
+    for arrangedView in stack.arrangedSubviews {
+        arrangedView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+    }
+    let fillWidth = stack.widthAnchor.constraint(equalTo: document.widthAnchor, constant: -56)
+    fillWidth.priority = .defaultHigh
     NSLayoutConstraint.activate([
         stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 24),
         stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 28),
-        stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -28),
+        stack.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor, constant: -28),
         stack.bottomAnchor.constraint(lessThanOrEqualTo: document.bottomAnchor, constant: -24),
+        stack.widthAnchor.constraint(lessThanOrEqualToConstant: 620),
         stack.widthAnchor.constraint(greaterThanOrEqualToConstant: 480),
+        fillWidth,
     ])
 
     let scroll = NSScrollView()
     scroll.documentView = document
     scroll.hasVerticalScroller = true
-    scroll.drawsBackground = true
-    scroll.backgroundColor = .windowBackgroundColor
+    scroll.drawsBackground = false
     document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor).isActive = true
+    document.heightAnchor.constraint(greaterThanOrEqualTo: scroll.contentView.heightAnchor).isActive = true
     return scroll
 }
 

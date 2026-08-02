@@ -1,5 +1,10 @@
 import AppKit
 
+private extension NSToolbarItem.Identifier {
+    static let reloadConfiguration = NSToolbarItem.Identifier("reloadConfiguration")
+    static let saveConfiguration = NSToolbarItem.Identifier("saveConfiguration")
+}
+
 enum ConfigSection: String, CaseIterable {
     case general = "General"
     case dns = "DNS"
@@ -56,6 +61,8 @@ final class SettingsWindowController {
         let contentController = SettingsViewController(state: state)
         contentController.preferredContentSize = NSSize(width: 1100, height: 720)
         window.contentViewController = contentController
+        window.toolbar = contentController.makeWindowToolbar()
+        window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
         window.isRestorable = false
         window.minSize = NSSize(width: 760, height: 540)
@@ -70,13 +77,14 @@ final class SettingsWindowController {
 }
 
 @MainActor
-final class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+final class SettingsViewController: NSSplitViewController, NSTableViewDataSource, NSTableViewDelegate, NSToolbarDelegate {
     private let state: GlobalStateVm
     private var service: ConfigurationService { state.configService }
     private let sidebar = NSTableView()
     private let detailContainer = NSView()
-    private let reloadButton = NSButton()
-    private let saveButton = NSButton()
+    private let detailHostController = NSViewController()
+    private var reloadToolbarItem: NSToolbarItem?
+    private var saveToolbarItem: NSToolbarItem?
     private var contentController: NSViewController?
     private var selectedSection: ConfigSection = .general
 
@@ -88,96 +96,82 @@ final class SettingsViewController: NSViewController, NSTableViewDataSource, NST
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    override func loadView() {
-        let rootView = NSView(frame: NSRect(x: 0, y: 0, width: 1100, height: 720))
-        rootView.autoresizingMask = [.width, .height]
-        rootView.widthAnchor.constraint(greaterThanOrEqualToConstant: 760).isActive = true
-        rootView.heightAnchor.constraint(greaterThanOrEqualToConstant: 540).isActive = true
-        view = rootView
+    override func viewDidLoad() {
+        super.viewDidLoad()
 
-        let toolbar = makeToolbar()
+        splitView.isVertical = true
+        splitView.dividerStyle = .thin
+
         let sidebarScroll = makeSidebar()
-        let divider = NSBox()
-        divider.boxType = .separator
+        let sidebarController = NSViewController()
+        sidebarController.view = sidebarScroll
+        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
+        sidebarItem.minimumThickness = 180
+        sidebarItem.maximumThickness = 260
+        sidebarItem.preferredThicknessFraction = 210.0 / 1100.0
+        sidebarItem.canCollapse = false
+        addSplitViewItem(sidebarItem)
 
-        [toolbar, sidebarScroll, divider, detailContainer].forEach {
-            $0.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview($0)
-        }
-
-        NSLayoutConstraint.activate([
-            toolbar.topAnchor.constraint(equalTo: view.topAnchor),
-            toolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            toolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            toolbar.heightAnchor.constraint(equalToConstant: 56),
-
-            sidebarScroll.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
-            sidebarScroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            sidebarScroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            sidebarScroll.widthAnchor.constraint(equalToConstant: 210),
-
-            divider.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
-            divider.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            divider.leadingAnchor.constraint(equalTo: sidebarScroll.trailingAnchor),
-            divider.widthAnchor.constraint(equalToConstant: 1),
-
-            detailContainer.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
-            detailContainer.leadingAnchor.constraint(equalTo: divider.trailingAnchor),
-            detailContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            detailContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
+        detailHostController.view = detailContainer
+        let detailItem = NSSplitViewItem(viewController: detailHostController)
+        detailItem.minimumThickness = 540
+        addSplitViewItem(detailItem)
 
         sidebar.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         showSection(.general)
         updateButtons()
     }
 
-    private func makeToolbar() -> NSView {
-        let container = NSVisualEffectView()
-        container.material = .headerView
-        container.blendingMode = .withinWindow
+    func makeWindowToolbar() -> NSToolbar {
+        let toolbar = NSToolbar(identifier: "SettingsToolbar")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        toolbar.allowsUserCustomization = false
+        return toolbar
+    }
 
-        let title = NSTextField(labelWithString: "Settings")
-        title.font = .systemFont(ofSize: 20, weight: .semibold)
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.flexibleSpace, .reloadConfiguration, .saveConfiguration]
+    }
 
-        reloadButton.title = "Reload"
-        reloadButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
-        reloadButton.imagePosition = .imageLeading
-        reloadButton.bezelStyle = .rounded
-        reloadButton.target = self
-        reloadButton.action = #selector(reloadConfiguration)
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.flexibleSpace, .reloadConfiguration, .saveConfiguration]
+    }
 
-        saveButton.title = "Save"
-        saveButton.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: nil)
-        saveButton.imagePosition = .imageLeading
-        saveButton.bezelStyle = .rounded
-        saveButton.keyEquivalent = "s"
-        saveButton.keyEquivalentModifierMask = [.command]
-        saveButton.target = self
-        saveButton.action = #selector(saveConfiguration)
-
-        let stack = NSStackView(views: [title, NSView(), reloadButton, saveButton])
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 10
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.setHuggingPriority(.defaultLow, for: .horizontal)
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 18),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -18),
-            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-        ])
-        return container
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+        switch itemIdentifier {
+        case .reloadConfiguration:
+            item.label = "Reload"
+            item.toolTip = "Reload configuration"
+            item.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
+            item.target = self
+            item.action = #selector(reloadConfiguration)
+            reloadToolbarItem = item
+        case .saveConfiguration:
+            item.label = "Save"
+            item.toolTip = "Save configuration"
+            item.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: nil)
+            item.target = self
+            item.action = #selector(saveConfiguration)
+            saveToolbarItem = item
+        default:
+            return nil
+        }
+        return item
     }
 
     private func makeSidebar() -> NSScrollView {
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("section"))
         column.width = 208
+        column.resizingMask = .autoresizingMask
         sidebar.addTableColumn(column)
         sidebar.headerView = nil
         sidebar.rowHeight = 42
-        sidebar.backgroundColor = .clear
         sidebar.style = .sourceList
         sidebar.dataSource = self
         sidebar.delegate = self
@@ -185,8 +179,7 @@ final class SettingsViewController: NSViewController, NSTableViewDataSource, NST
         let scroll = NSScrollView()
         scroll.documentView = sidebar
         scroll.hasVerticalScroller = true
-        scroll.drawsBackground = true
-        scroll.backgroundColor = .windowBackgroundColor
+        scroll.drawsBackground = false
         return scroll
     }
 
@@ -238,7 +231,7 @@ final class SettingsViewController: NSViewController, NSTableViewDataSource, NST
             controller = RulesViewController(service: service, onChange: changeHandler)
         }
 
-        addChild(controller)
+        detailHostController.addChild(controller)
         controller.view.translatesAutoresizingMaskIntoConstraints = false
         detailContainer.addSubview(controller.view)
         NSLayoutConstraint.activate([
@@ -256,8 +249,12 @@ final class SettingsViewController: NSViewController, NSTableViewDataSource, NST
     }
 
     private func updateButtons() {
-        reloadButton.title = service.isDirty ? "Revert" : "Reload"
-        saveButton.isEnabled = service.isDirty
+        reloadToolbarItem?.label = service.isDirty ? "Revert" : "Reload"
+        reloadToolbarItem?.image = NSImage(
+            systemSymbolName: service.isDirty ? "arrow.uturn.backward" : "arrow.clockwise",
+            accessibilityDescription: nil
+        )
+        saveToolbarItem?.isEnabled = service.isDirty
     }
 
     @objc private func reloadConfiguration() {

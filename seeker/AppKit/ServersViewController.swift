@@ -30,9 +30,15 @@ final class ServersViewController: NSViewController, NSTableViewDataSource, NSTa
         table.rowHeight = 52
         table.delegate = self
         table.dataSource = self
-        table.style = .sourceList
+        table.style = .plain
+        table.backgroundColor = .windowBackgroundColor
+        table.usesAlternatingRowBackgroundColors = false
         scroll.documentView = table
         scroll.hasVerticalScroller = true
+        scroll.drawsBackground = true
+        scroll.backgroundColor = .windowBackgroundColor
+        scroll.contentView.drawsBackground = true
+        scroll.contentView.backgroundColor = .windowBackgroundColor
 
         let add = CallbackButton(title: "Add") { [weak self] in self?.addServer() }
         add.image = NSImage(systemSymbolName: "plus", accessibilityDescription: nil)
