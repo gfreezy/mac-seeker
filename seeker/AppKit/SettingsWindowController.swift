@@ -35,19 +35,9 @@ final class SettingsWindowController {
         let controller = windowController ?? makeWindowController()
         windowController = controller
         controller.showWindow(nil)
-        let mouseLocation = NSEvent.mouseLocation
-        let activeScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
-        if let window = controller.window, let screen = activeScreen ?? NSScreen.main ?? window.screen {
-            let visible = screen.visibleFrame
-            let width = min(1100, visible.width)
-            let height = min(750, visible.height)
-            let frame = NSRect(
-                x: visible.midX - width / 2,
-                y: visible.midY - height / 2,
-                width: width,
-                height: height
-            )
-            window.setFrame(frame, display: true)
+        if let window = controller.window {
+            window.setContentSize(NSSize(width: 1100, height: 720))
+            window.center()
             window.makeKeyAndOrderFront(nil)
         } else {
             controller.window?.makeKeyAndOrderFront(nil)
@@ -63,7 +53,9 @@ final class SettingsWindowController {
             defer: false
         )
         window.title = "Settings"
-        window.contentViewController = SettingsViewController(state: state)
+        let contentController = SettingsViewController(state: state)
+        contentController.preferredContentSize = NSSize(width: 1100, height: 720)
+        window.contentViewController = contentController
         window.isReleasedWhenClosed = false
         window.isRestorable = false
         window.minSize = NSSize(width: 760, height: 540)
@@ -97,7 +89,11 @@ final class SettingsViewController: NSViewController, NSTableViewDataSource, NST
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func loadView() {
-        view = NSView()
+        let rootView = NSView(frame: NSRect(x: 0, y: 0, width: 1100, height: 720))
+        rootView.autoresizingMask = [.width, .height]
+        rootView.widthAnchor.constraint(greaterThanOrEqualToConstant: 760).isActive = true
+        rootView.heightAnchor.constraint(greaterThanOrEqualToConstant: 540).isActive = true
+        view = rootView
 
         let toolbar = makeToolbar()
         let sidebarScroll = makeSidebar()
@@ -146,12 +142,14 @@ final class SettingsViewController: NSViewController, NSTableViewDataSource, NST
 
         reloadButton.title = "Reload"
         reloadButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
+        reloadButton.imagePosition = .imageLeading
         reloadButton.bezelStyle = .rounded
         reloadButton.target = self
         reloadButton.action = #selector(reloadConfiguration)
 
         saveButton.title = "Save"
         saveButton.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: nil)
+        saveButton.imagePosition = .imageLeading
         saveButton.bezelStyle = .rounded
         saveButton.keyEquivalent = "s"
         saveButton.keyEquivalentModifierMask = [.command]
