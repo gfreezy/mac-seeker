@@ -50,6 +50,26 @@ struct seekerTests {
         #expect(!yaml.contains("url-test"))
     }
 
+    @Test func tunDeviceNameDefaultsToAutomaticAndIsOmittedFromYaml() throws {
+        let configuration = try YAMLDecoder().decode(SeekerConfiguration.self, from: "{}")
+
+        #expect(configuration.tunName.isEmpty)
+
+        let yaml = try YAMLEncoder().encode(configuration)
+        #expect(!yaml.contains("tun_name"))
+    }
+
+    @Test func explicitTunDeviceNameIsPreserved() throws {
+        var configuration = SeekerConfiguration.defaultConfiguration()
+        configuration.tunName = "  utun42  "
+
+        let yaml = try YAMLEncoder().encode(configuration)
+        let decoded = try YAMLDecoder().decode(SeekerConfiguration.self, from: yaml)
+
+        #expect(yaml.contains("tun_name: utun42"))
+        #expect(decoded.tunName == "utun42")
+    }
+
     @Test @MainActor func implicitDefaultCanBeMaterializedAndRestored() throws {
         let (service, configURL) = try makeService(
             servers: ["server-1", "server-2"],

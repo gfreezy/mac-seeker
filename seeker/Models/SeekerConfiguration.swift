@@ -11,7 +11,7 @@ struct SeekerConfiguration: Codable, Equatable {
     var dnsListens: [String] = []
 
     // TUN Device
-    var tunName: String = "utun4"
+    var tunName: String = ""
     var tunIp: String = "11.0.0.1"
     var tunCidr: String = "11.0.0.0/16"
     var tunBypassDirect: Bool = true
@@ -114,7 +114,7 @@ struct SeekerConfiguration: Codable, Equatable {
             dnsListens = []
         }
 
-        tunName = try container.decodeIfPresent(String.self, forKey: .tunName) ?? "utun4"
+        tunName = try container.decodeIfPresent(String.self, forKey: .tunName) ?? ""
         tunIp = try container.decodeIfPresent(String.self, forKey: .tunIp) ?? "11.0.0.1"
         tunCidr = try container.decodeIfPresent(String.self, forKey: .tunCidr) ?? "11.0.0.0/16"
         tunBypassDirect = try container.decodeIfPresent(Bool.self, forKey: .tunBypassDirect) ?? true
@@ -153,7 +153,10 @@ struct SeekerConfiguration: Codable, Equatable {
         try container.encode(dnsTimeout, forKey: .dnsTimeout)
         try container.encode(dnsListens, forKey: .dnsListens)
 
-        try container.encode(tunName, forKey: .tunName)
+        let normalizedTunName = tunName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedTunName.isEmpty {
+            try container.encode(normalizedTunName, forKey: .tunName)
+        }
         try container.encode(tunIp, forKey: .tunIp)
         try container.encode(tunCidr, forKey: .tunCidr)
         try container.encode(tunBypassDirect, forKey: .tunBypassDirect)

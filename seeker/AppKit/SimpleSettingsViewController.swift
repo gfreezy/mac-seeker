@@ -91,7 +91,10 @@ final class SimpleSettingsViewController: NSViewController {
     private func buildTUN(in stack: NSStackView) {
         let config = service.configuration
         stack.addArrangedSubview(makeSection("TUN Device", rows: [
-            makeFormRow("Device Name", control: text(config.tunName) { $0.tunName = $1 }),
+            makeFormRow(
+                "Device Name (Optional)",
+                control: text(config.tunName, placeholder: "Automatic") { $0.tunName = $1 }
+            ),
             makeFormRow("IP Address", control: text(config.tunIp) { $0.tunIp = $1 }),
             makeFormRow("CIDR", control: text(config.tunCidr) { $0.tunCidr = $1 }),
         ]))
