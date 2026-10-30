@@ -70,6 +70,59 @@ struct seekerTests {
         #expect(decoded.tunName == "utun42")
     }
 
+    @Test func mimicSettingsSurviveYamlAndSubscriptionCacheRoundTrips() throws {
+        for padding in ["0", "16", "random"] {
+            let yaml = """
+                name: mimic
+                addr: proxy.example:8443
+                protocol: Hysteria2
+                mimic:
+                  enabled: true
+                  interface: en0
+                  tun_name: utun42
+                  mtu: 1400
+                  padding: \(padding)
+                """
+            let server = try YAMLDecoder().decode(ProxyServer.self, from: yaml)
+            let mimic = try #require(server.mimic)
+            #expect(mimic.enabled == true)
+            #expect(mimic.interface == "en0")
+            #expect(mimic.tunName == "utun42")
+            #expect(mimic.mtu == 1400)
+            #expect(mimic.padding == (padding == "random" ? .random : .fixed(UInt8(padding)!)))
+
+            let encoded = try YAMLEncoder().encode(server)
+            let restored = try YAMLDecoder().decode(ProxyServer.self, from: encoded)
+            #expect(restored.mimic == mimic)
+            #expect(encoded.contains("tun_name: utun42"))
+
+            let cached = try JSONEncoder().encode(server)
+            let restoredCache = try JSONDecoder().decode(ProxyServer.self, from: cached)
+            #expect(restoredCache.mimic == mimic)
+        }
+    }
+
+    @Test @MainActor func menuSelectionPreservesMimicSettings() throws {
+        let (service, configURL) = try makeService(
+            servers: ["server-1", "server-2"],
+            groups: [ProxyGroup(name: "work", proxies: ["server-1", "server-2"])],
+            rules: ["MATCH,PROXY(work)"]
+        )
+        defer { try? FileManager.default.removeItem(at: configURL) }
+        let mimic = try YAMLDecoder().decode(
+            MimicConfig.self, from: "enabled: true\npadding: random\n"
+        )
+        service.configuration.servers[0].protocol = .hysteria2
+        service.configuration.servers[0].mimic = mimic
+        try service.save()
+
+        try service.selectProxy(groupName: "work", serverName: "server-1")
+        try service.reload()
+
+        #expect(service.configuration.servers[0].mimic == mimic)
+        #expect(service.configuration.proxyGroups[0].defaultSelected == "server-1")
+    }
+
     @Test @MainActor func implicitDefaultCanBeMaterializedAndRestored() throws {
         let (service, configURL) = try makeService(
             servers: ["server-1", "server-2"],

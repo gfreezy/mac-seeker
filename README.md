@@ -137,6 +137,8 @@ The app consists of three components:
 
 Communication between components uses XPC (Cross-Process Communication) for security and stability.
 
+The bundled Seeker core is pinned to `v20261030.0.0`, including userspace Mimic support for Hysteria2. Add `mimic: { enabled: true }` to the relevant Hysteria2 server in your YAML configuration to enable it. The macOS app preserves the `enabled`, `interface`, `tun_name`, `mtu`, and `padding` options when saving settings, switching proxy groups, and caching subscriptions. Padding accepts a number or `random`; omitted options use the core's defaults. See the [core's Mimic guide](https://github.com/gfreezy/seeker/blob/v20261030.0.0/docs/mimic.md) for configuration and platform requirements.
+
 Release builds check for updates once per day and ask before downloading and installing. Debug builds do not start the updater. Seeker's running state is restored after a successful update when the installed build version matches the selected update. The first updater-enabled version must still be installed manually by users of v1.0.2 or earlier.
 
 ## Development

@@ -255,6 +255,7 @@ struct ProxyServer: Codable, Equatable, Identifiable, Hashable {
     var obfsPassword: String?
     var insecure: Bool?
     var recvWindow: UInt64?
+    var mimic: MimicConfig?
     var vmessSecurity: String?
     var flow: String?
 
@@ -269,6 +270,7 @@ struct ProxyServer: Codable, Equatable, Identifiable, Hashable {
         case obfsPassword = "obfs_password"
         case insecure
         case recvWindow = "recv_window"
+        case mimic
         case vmessSecurity = "vmess_security"
         case flow
         // Clash format alternatives
@@ -284,7 +286,7 @@ struct ProxyServer: Codable, Equatable, Identifiable, Hashable {
         password: String? = nil, protocol: ProxyProtocol = .http,
         method: String? = nil, obfs: ObfsConfig? = nil,
         sni: String? = nil, obfsPassword: String? = nil,
-        insecure: Bool? = nil, recvWindow: UInt64? = nil,
+        insecure: Bool? = nil, recvWindow: UInt64? = nil, mimic: MimicConfig? = nil,
         vmessSecurity: String? = nil, flow: String? = nil,
         source: ServerSource = .local
     ) {
@@ -299,6 +301,7 @@ struct ProxyServer: Codable, Equatable, Identifiable, Hashable {
         self.obfsPassword = obfsPassword
         self.insecure = insecure
         self.recvWindow = recvWindow
+        self.mimic = mimic
         self.vmessSecurity = vmessSecurity
         self.flow = flow
         self.source = source
@@ -354,6 +357,7 @@ struct ProxyServer: Codable, Equatable, Identifiable, Hashable {
         insecure = try container.decodeIfPresent(Bool.self, forKey: .insecure)
             ?? container.decodeIfPresent(Bool.self, forKey: .skipCertVerify)
         recvWindow = try container.decodeIfPresent(UInt64.self, forKey: .recvWindow)
+        mimic = try container.decodeIfPresent(MimicConfig.self, forKey: .mimic)
         vmessSecurity = try container.decodeIfPresent(String.self, forKey: .vmessSecurity)
         flow = try container.decodeIfPresent(String.self, forKey: .flow)
 
@@ -376,6 +380,7 @@ struct ProxyServer: Codable, Equatable, Identifiable, Hashable {
         try container.encodeIfPresent(obfsPassword, forKey: .obfsPassword)
         try container.encodeIfPresent(insecure, forKey: .insecure)
         try container.encodeIfPresent(recvWindow, forKey: .recvWindow)
+        try container.encodeIfPresent(mimic, forKey: .mimic)
         try container.encodeIfPresent(vmessSecurity, forKey: .vmessSecurity)
         try container.encodeIfPresent(flow, forKey: .flow)
     }
@@ -495,6 +500,50 @@ enum VLESSFlow: String, CaseIterable {
 struct ObfsConfig: Codable, Equatable, Hashable {
     var mode: String = "Http"
     var host: String = ""
+}
+
+/// Keep omitted values absent so the bundled core supplies its defaults.
+struct MimicConfig: Codable, Equatable, Hashable {
+    var enabled: Bool?
+    var interface: String?
+    var tunName: String?
+    var mtu: UInt16?
+    var padding: MimicPadding?
+
+    enum CodingKeys: String, CodingKey {
+        case enabled, interface, mtu, padding
+        case tunName = "tun_name"
+    }
+}
+
+enum MimicPadding: Codable, Equatable, Hashable {
+    case fixed(UInt8)
+    case random
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let bytes = try? container.decode(UInt8.self) {
+            self = .fixed(bytes)
+        } else {
+            let mode = try container.decode(String.self)
+            guard mode == "random" else {
+                throw DecodingError.dataCorruptedError(
+                    in: container, debugDescription: "Mimic padding must be a number or random"
+                )
+            }
+            self = .random
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .fixed(let bytes):
+            try container.encode(bytes)
+        case .random:
+            try container.encode("random")
+        }
+    }
 }
 
 // MARK: - Proxy Group
