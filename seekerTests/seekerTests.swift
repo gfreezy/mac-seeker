@@ -123,6 +123,34 @@ struct seekerTests {
         #expect(service.configuration.proxyGroups[0].defaultSelected == "server-1")
     }
 
+    @Test func mimicSettingsValidateInterfaceNamesAndMtuBounds() throws {
+        for yaml in ["{}", "mtu: 1280", "mtu: 9000", "interface: en0\ntun_name: utun42"] {
+            let config = try YAMLDecoder().decode(MimicConfig.self, from: yaml)
+            #expect(config.validationError == nil)
+        }
+        for yaml in [
+            "mtu: 0", "mtu: 1279", "mtu: 9001", "padding: 17",
+            "interface: ''", "interface: 'en 0'", "interface: '网卡'",
+            "tun_name: abcdefghijklmnop", "interface: \"en0\\n\"",
+        ] {
+            let config = try YAMLDecoder().decode(MimicConfig.self, from: yaml)
+            #expect(config.validationError != nil)
+        }
+    }
+
+    @Test @MainActor func invalidMimicSettingsDoNotOverwriteConfiguration() throws {
+        let (service, configURL) = try makeService(servers: ["server-1"], groups: [], rules: [])
+        defer { try? FileManager.default.removeItem(at: configURL) }
+        let original = try String(contentsOf: configURL, encoding: .utf8)
+        service.configuration.servers[0].protocol = .hysteria2
+        service.configuration.servers[0].mimic = try YAMLDecoder().decode(
+            MimicConfig.self, from: "enabled: true\nmtu: 0\n"
+        )
+
+        #expect(throws: ConfigurationError.self) { try service.save() }
+        #expect(try String(contentsOf: configURL, encoding: .utf8) == original)
+    }
+
     @Test @MainActor func implicitDefaultCanBeMaterializedAndRestored() throws {
         let (service, configURL) = try makeService(
             servers: ["server-1", "server-2"],

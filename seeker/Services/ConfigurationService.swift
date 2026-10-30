@@ -147,6 +147,7 @@ class ConfigurationService {
     }
 
     func save() throws {
+        try validateMimicSettings()
         do {
             let encoder = YAMLEncoder()
             let yamlString = try encoder.encode(configuration)
@@ -185,6 +186,7 @@ class ConfigurationService {
     }
 
     func exportTo(url: URL) throws {
+        try validateMimicSettings()
         let encoder = YAMLEncoder()
         let yamlString = try encoder.encode(configuration)
         try yamlString.write(to: url, atomically: true, encoding: .utf8)
@@ -195,6 +197,18 @@ class ConfigurationService {
         let decoder = YAMLDecoder()
         configuration = try decoder.decode(SeekerConfiguration.self, from: content)
         isDirty = true
+    }
+
+    private func validateMimicSettings() throws {
+        for server in configuration.servers {
+            guard let mimic = server.mimic else { continue }
+            guard server.protocol == .hysteria2 else {
+                throw ConfigurationError.saveError("\(server.name): Mimic requires Hysteria2.")
+            }
+            if let message = mimic.validationError {
+                throw ConfigurationError.saveError("\(server.name): \(message)")
+            }
+        }
     }
 
     // MARK: - Convenience Methods for Rules

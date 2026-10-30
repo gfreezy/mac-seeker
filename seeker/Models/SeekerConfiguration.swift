@@ -507,12 +507,28 @@ struct MimicConfig: Codable, Equatable, Hashable {
     var enabled: Bool?
     var interface: String?
     var tunName: String?
-    var mtu: UInt16?
+    var mtu: Int?
     var padding: MimicPadding?
 
     enum CodingKeys: String, CodingKey {
         case enabled, interface, mtu, padding
         case tunName = "tun_name"
+    }
+
+    var validationError: String? {
+        if let mtu, !(1280...9000).contains(mtu) {
+            return "Mimic MTU must be between 1280 and 9000."
+        }
+        if case .some(.fixed(let bytes)) = padding, bytes > 16 {
+            return "Mimic padding must be between 0 and 16 bytes, or Random."
+        }
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-")
+        for (label, name) in [("Interface", interface), ("TUN device", tunName)] {
+            if let name, name.isEmpty || name.utf8.count > 15 || !name.unicodeScalars.allSatisfy(allowed.contains) {
+                return "\(label) must contain 1–15 letters, digits, dots, underscores, or hyphens."
+            }
+        }
+        return nil
     }
 }
 
