@@ -165,6 +165,10 @@ When you build the Xcode project:
 3. The binary is copied to `seeker.app/Contents/MacOS/seeker-proxy`
 4. The daemon can then launch it with proper privileges
 
+### Daemon Lifecycle Tests
+
+Run `swift test --disable-sandbox` from the repository root. These tests compile the actual daemon sources and use real child processes and an anonymous XPC connection. They cover slow and forced termination, concurrent starts/stops, repeated restarts, failure recovery, and disconnect/reconnect shutdown. No root access, system daemon registration, or changes to your proxy configuration are required. CI runs the same suite before building the app.
+
 ### Publishing a Release
 
 Stable releases use `vX.Y.Z` tags. CI passes `X.Y.Z` to both `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`, verifies the archived bundle versions and code signatures, and publishes `Seeker.dmg` with a signed `appcast.xml`. The repository must have a `SPARKLE_ED_PRIVATE_KEY` Actions secret matching the public key embedded in the app, plus `MACOS_SIGNING_P12_BASE64` and `MACOS_SIGNING_P12_PASSWORD` secrets for the fixed self-signed App identity. Keep these long-lived private keys out of the repository and build logs. The packaging script pins the public certificate fingerprint, explicitly signs Sparkle's nested helpers, and disables library validation only on the self-signed artifact; Apple-signed builds retain normal library validation.

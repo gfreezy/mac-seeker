@@ -60,6 +60,9 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Test daemon process lifecycle
+        run: swift test --disable-sandbox
+
       - name: Build App
         env:
           # Main and tag builds reuse the fixed self-signed certificate stored

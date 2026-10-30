@@ -12,6 +12,8 @@ xcuserdata/
 *.xccheckout
 *.moved-aside
 DerivedData/
+.build/
+.swiftpm/
 *.hmap
 *.ipa
 *.xcuserstate
